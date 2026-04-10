@@ -31,7 +31,7 @@ jobs:
           workspaces: src-tauri
 
       - name: Install JS dependencies
-        run: npm ci
+        run: npm install
 
       - name: Build Tauri app (universal binary)
         uses: tauri-apps/tauri-action@v0

@@ -1,0 +1,56 @@
+name: Build macOS
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: macos-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: aarch64-apple-darwin,x86_64-apple-darwin
+
+      - name: Rust cache
+        uses: swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri
+
+      - name: Install JS dependencies
+        run: npm ci
+
+      - name: Build Tauri app (universal binary)
+        uses: tauri-apps/tauri-action@v0
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          args: --target universal-apple-darwin
+          tagName: ${{ github.ref_name }}
+          releaseName: 'ТЗ Tool ${{ github.ref_name }}'
+          releaseBody: |
+            ## ТЗ Tool — macOS
+
+            Додаток для розбору ТЗ на 3D-візуалізацію.
+
+            ### Встановлення
+            1. Завантаж `.dmg` нижче
+            2. Відкрий і перетягни у Applications
+            3. При першому запуску: правою кнопкою → Відкрити (якщо macOS блокує)
+
+            Universal binary — працює на Intel і Apple Silicon.
+          releaseDraft: true
+          prerelease: false

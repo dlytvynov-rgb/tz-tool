@@ -33,6 +33,25 @@ jobs:
       - name: Install JS dependencies
         run: npm install
 
+      - name: Generate icons
+        run: |
+          python3 -c "
+          import struct, zlib
+          def png(size, rgb=(26,26,26)):
+              def chunk(t, d):
+                  import zlib as z
+                  c = z.crc32(t+d) & 0xffffffff
+                  return struct.pack('>I',len(d))+t+d+struct.pack('>I',c)
+              raw = b''.join(b'\x00'+bytes(rgb)*size for _ in range(size))
+              data = ( b'\x89PNG\r\n\x1a\n'
+                + chunk(b'IHDR', struct.pack('>IIBBBBB',size,size,8,2,0,0,0))
+                + chunk(b'IDAT', zlib.compress(raw))
+                + chunk(b'IEND', b'') )
+              open('app-icon.png','wb').write(data)
+          png(1024)
+          "
+          npx tauri icon app-icon.png
+
       - name: Build frontend
         run: npm run build
 

@@ -1400,6 +1400,33 @@ function TzReviewStep({ projectType, rooms, tzByRoom, sowMissing, sowUnclear, cl
     navigator.clipboard.writeText(lines.join("\n")).catch(() => {});
   };
 
+  const exportExcel = async () => {
+    const XLSX = await loadXLSX();
+    const data = filteredRows.map(row => ({
+      "Тип":      row.type,
+      "Вимога":   row.text,
+      "Цитата":   row.quote || "",
+      "Категорія": row.category,
+      "Приміщення": row.room,
+      "Стадія":   row.stage,
+      "Джерело":  row.source + (row.img_ref?.pageNum > 1 ? ` стор.${row.img_ref.pageNum}` : ""),
+      "Посилання": (row._item?.links || []).map(l => l.url).join(", "),
+    }));
+    const ws = XLSX.utils.json_to_sheet(data);
+    // Column widths
+    ws["!cols"] = [8, 60, 40, 20, 20, 16, 20, 40].map(w => ({ wch: w }));
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, "ТЗ");
+    XLSX.writeFile(wb, `tz-${new Date().toISOString().slice(0,10)}.xlsx`);
+  };
+
+  const exportPdf = () => {
+    const prev = document.title;
+    document.title = `ТЗ — ${projectType || "проект"} — ${new Date().toLocaleDateString("uk-UA")}`;
+    window.print();
+    document.title = prev;
+  };
+
   return (
     <div style={{ minHeight: "100vh", background: "#f5f4f1", display: "flex", flexDirection: "column" }}>
       {lightbox && <ImageLightbox imgRef={lightbox.imgRef} itemText={lightbox.itemText} onClose={() => setLightbox(null)} />}
@@ -1424,7 +1451,8 @@ function TzReviewStep({ projectType, rooms, tzByRoom, sowMissing, sowUnclear, cl
               : <>🔗 Посилання</>}
           </button>
         )}
-        <button onClick={() => window.print()} style={{ fontSize: 9, fontFamily: "monospace", background: "none", border: "1px solid #333", color: "#666", padding: "3px 10px", borderRadius: 4, cursor: "pointer" }}>PDF</button>
+        <button onClick={exportPdf} style={{ fontSize: 9, fontFamily: "monospace", background: "none", border: "1px solid #333", color: "#666", padding: "3px 10px", borderRadius: 4, cursor: "pointer" }}>PDF</button>
+        <button onClick={exportExcel} style={{ fontSize: 9, fontFamily: "monospace", background: "none", border: "1px solid #2ecc71", color: "#2ecc71", padding: "3px 10px", borderRadius: 4, cursor: "pointer" }}>XLS</button>
         <button onClick={copyMd} style={{ fontSize: 9, fontFamily: "monospace", background: "none", border: "1px solid #333", color: "#666", padding: "3px 10px", borderRadius: 4, cursor: "pointer" }}>MD</button>
       </div>
 

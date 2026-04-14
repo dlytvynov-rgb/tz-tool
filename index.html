@@ -5,6 +5,24 @@
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>ТЗ Tool</title>
+  <style>
+    @media print {
+      /* Hide UI chrome */
+      button, input, select { display: none !important; }
+      /* Show only the main content area */
+      body { background: #fff !important; }
+      /* Table: fit page */
+      table { width: 100%; border-collapse: collapse; font-size: 9pt; }
+      th, td { border: 1px solid #ccc; padding: 4px 6px; word-break: break-word; }
+      th { background: #f0f0f0 !important; -webkit-print-color-adjust: exact; }
+      /* Avoid breaking rows across pages */
+      tr { page-break-inside: avoid; }
+      /* Hide thumbnails in print */
+      img { display: none !important; }
+      /* Show links as text */
+      a::after { content: " (" attr(href) ")"; font-size: 8pt; color: #555; }
+    }
+  </style>
   </head>
   <body>
     <div id="root"></div>

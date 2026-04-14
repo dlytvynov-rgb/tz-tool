@@ -1286,6 +1286,7 @@ function TzItem({ item, onEdit, onRemove, onOpenRef, onOpenDoc }) {
           {(item.links || []).map((lk, li) => (
             <a key={li} href={lk.url} target="_blank" rel="noreferrer"
               title={lk.url}
+              onClick={e => { e.preventDefault(); e.stopPropagation(); if (window.__TAURI__) { window.__TAURI__.opener?.openUrl(lk.url); } else { window.open(lk.url, "_blank", "noopener,noreferrer"); } }}
               style={{ fontSize: 9, color: "#3498db", fontFamily: "monospace", textDecoration: "none", background: "#f0f7ff", border: "1px solid #d0e8fb", borderRadius: 3, padding: "1px 5px" }}>
               🔗 {lk.label || lk.url.replace(/^https?:\/\//, "").slice(0, 35)}
             </a>
@@ -1722,7 +1723,7 @@ function TzReviewStep({ projectType, rooms, tzByRoom, sowMissing, sowUnclear, cl
                     : Object.entries(byRoom).map(([room, items]) => (
                         <div key={room} style={{ marginBottom: 20 }}>
                           <div style={{ fontSize: 9, fontWeight: 700, fontFamily: "monospace", color: "#aaa", letterSpacing: "0.1em", marginBottom: 6, borderBottom: "1px solid #ece9e4", paddingBottom: 4 }}>{room.toUpperCase()}</div>
-                          {items.map(item => <TzItem key={item.id} item={item} onEdit={onEdit} onRemove={onRemove} onOpenRef={(imgRef, itemText) => setLightbox({ imgRef, itemText })} onOpenDoc={(label, itemText) => openDocByLabel(label, itemText)} />)}
+                          {items.map(item => <TzItem key={item.id} item={item} onEdit={onEdit} onRemove={onRemove} onOpenRef={(imgRef, itemText) => { const f = imgRef?.filename ? filesByName[imgRef.filename] : null; if (f) openDocViewer(f.filename, imgRef.pageNum, itemText); else setLightbox({ imgRef, itemText }); }} onOpenDoc={(label, itemText) => openDocByLabel(label, itemText)} />)}
                         </div>
                       ))
                   }
@@ -1798,6 +1799,7 @@ function TzReviewStep({ projectType, rooms, tzByRoom, sowMissing, sowUnclear, cl
                             <span style={{ fontSize: 8, fontFamily: "monospace", color: "#bbb" }}>{item.category}</span>
                             {(item.links || []).map((lk, li) => (
                               <a key={li} href={lk.url} target="_blank" rel="noreferrer"
+                                onClick={e => { e.preventDefault(); e.stopPropagation(); if (window.__TAURI__) { window.__TAURI__.opener?.openUrl(lk.url); } else { window.open(lk.url, "_blank", "noopener,noreferrer"); } }}
                                 style={{ fontSize: 8, color: "#3498db", fontFamily: "monospace", textDecoration: "none" }}>
                                 🔗 {lk.label || lk.type}
                               </a>
@@ -1876,7 +1878,7 @@ function TzReviewStep({ projectType, rooms, tzByRoom, sowMissing, sowUnclear, cl
                         <span style={{ fontSize: 9, color: "#ccc", fontFamily: "monospace" }}>{items.length}</span>
                       </div>
                       <div style={{ paddingLeft: 14 }}>
-                        {items.map(item => <TzItem key={item.id} item={item} onEdit={onEdit} onRemove={onRemove} onOpenRef={(imgRef, itemText) => setLightbox({ imgRef, itemText })} onOpenDoc={(label, itemText) => openDocByLabel(label, itemText)} />)}
+                        {items.map(item => <TzItem key={item.id} item={item} onEdit={onEdit} onRemove={onRemove} onOpenRef={(imgRef, itemText) => { const f = imgRef?.filename ? filesByName[imgRef.filename] : null; if (f) openDocViewer(f.filename, imgRef.pageNum, itemText); else setLightbox({ imgRef, itemText }); }} onOpenDoc={(label, itemText) => openDocByLabel(label, itemText)} />)}
                       </div>
                     </div>
                   ))

@@ -1,4 +1,4 @@
-name: Build macOS
+name: Build
 
 on:
   push:
@@ -7,7 +7,7 @@ on:
   workflow_dispatch:
 
 jobs:
-  build:
+  build-macos:
     runs-on: macos-latest
     permissions:
       contents: write
@@ -57,7 +57,7 @@ jobs:
       - name: Build frontend
         run: npm run build
 
-      - name: Build Tauri app (universal binary)
+      - name: Build Tauri app (universal macOS binary)
         uses: tauri-apps/tauri-action@v0
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -66,15 +66,74 @@ jobs:
           tagName: ${{ github.ref_name }}
           releaseName: 'ТЗ Tool ${{ github.ref_name }}'
           releaseBody: |
-            ## ТЗ Tool — macOS
+            ## ТЗ Tool ${{ github.ref_name }}
 
             Додаток для розбору ТЗ на 3D-візуалізацію.
 
-            ### Встановлення
-            1. Завантаж `.dmg` нижче
-            2. Відкрий і перетягни у Applications
-            3. При першому запуску: правою кнопкою → Відкрити (якщо macOS блокує)
+            ### macOS
+            - Завантаж `.dmg` → перетягни у Applications
+            - При першому запуску: правою кнопкою → Відкрити
+            - Universal binary: працює на Intel і Apple Silicon
 
-            Universal binary — працює на Intel і Apple Silicon.
+            ### Windows
+            - Завантаж `.msi` → встанови як звичайну програму
+          releaseDraft: true
+          prerelease: false
+
+  build-windows:
+    runs-on: windows-latest
+    permissions:
+      contents: write
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Rust cache
+        uses: swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri
+
+      - name: Install JS dependencies
+        run: npm install
+
+      - name: Generate icons
+        run: |
+          python -c "
+          import struct, zlib
+          def png(size, rgb=(26,26,26)):
+              def chunk(t, d):
+                  import zlib as z
+                  c = z.crc32(t+d) & 0xffffffff
+                  return struct.pack('>I',len(d))+t+d+struct.pack('>I',c)
+              raw = b''.join(b'\x00'+bytes(rgb)*size for _ in range(size))
+              data = ( b'\x89PNG\r\n\x1a\n'
+                + chunk(b'IHDR', struct.pack('>IIBBBBB',size,size,8,2,0,0,0))
+                + chunk(b'IDAT', zlib.compress(raw))
+                + chunk(b'IEND', b'') )
+              open('app-icon.png','wb').write(data)
+          png(1024)
+          "
+          npx tauri icon app-icon.png
+
+      - name: Build frontend
+        run: npm run build
+
+      - name: Build Tauri app (Windows)
+        uses: tauri-apps/tauri-action@v0
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          tagName: ${{ github.ref_name }}
+          releaseName: 'ТЗ Tool ${{ github.ref_name }}'
           releaseDraft: true
           prerelease: false

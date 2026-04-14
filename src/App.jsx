@@ -1,4 +1,4 @@
-import { useState, useRef, useCallback } from "react";
+import { useState, useRef, useCallback, useMemo } from "react";
 
 // ─── SheetJS (Excel) ──────────────────────────────────────────────────────────
 async function loadXLSX() {
@@ -185,108 +185,193 @@ async function dwgToDxfText(file) {
 }
 
 async function dwgRenderToCanvas(file) {
-  const { lib, database, handler } = await dwgLoadDatabase(file);
+  const { lib, database, handler } = await dwgLoadDatabase(file).catch(e => { console.warn(`[DWG render load] ${file.name}: ${e.message}`, e); throw e; });
   try {
     const mBlock = database.mBlock;
     if (!mBlock) throw new Error("mBlock not found");
     const entities = mBlock.entities;
     const ET = lib.DRW_ETYPE;
 
-    // Collect points for bounding box
-    let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
-    const expand = (x, y) => {
-      if (x < minX) minX = x; if (x > maxX) maxX = x;
-      if (y < minY) minY = y; if (y > maxY) maxY = y;
+    // Safe enum values for entity types that may not exist in all builds
+    const EV = {
+      LINE:       ET.LINE?.value       ?? -1,
+      ARC:        ET.ARC?.value        ?? -2,
+      CIRCLE:     ET.CIRCLE?.value     ?? -3,
+      LWPOLYLINE: ET.LWPOLYLINE?.value ?? -4,
+      POLYLINE:   ET.POLYLINE?.value   ?? -5,
+      SPLINE:     ET.SPLINE?.value     ?? -6,
+      TEXT:       ET.TEXT?.value       ?? -7,
+      MTEXT:      ET.MTEXT?.value      ?? -8,
+      DIMENSION:  ET.DIMENSION?.value  ?? -9,
+    };
+
+    // Layer → color heuristic
+    const layerColor = name => {
+      const n = (name || "").toLowerCase();
+      if (/wall|стін|перег|кімн|кімната|room/.test(n)) return "#111";
+      if (/dim|розмір|размер|measure|quote/.test(n)) return "#2471a3";
+      if (/furn|мебл|мебель|меблі/.test(n)) return "#7d3c98";
+      if (/door|двер|окн|вікн|window/.test(n)) return "#555";
+      if (/text|надп|label|annot/.test(n)) return "#333";
+      if (/axis|вісь|ось|grid/.test(n)) return "#aaa";
+      return "#222";
     };
 
     const n = entities.size();
-    for (let i = 0; i < n; i++) {
-      const e = entities.get(i);
-      const t = e.eType.value;
-      if (t === ET.LINE.value || t === ET.ARC.value || t === ET.CIRCLE.value) {
-        expand(e.basePoint.x, e.basePoint.y);
-        if (t === ET.LINE.value) expand(e.secPoint.x, e.secPoint.y);
-        if (t === ET.CIRCLE.value || t === ET.ARC.value) {
-          expand(e.basePoint.x - e.radius, e.basePoint.y - e.radius);
-          expand(e.basePoint.x + e.radius, e.basePoint.y + e.radius);
-        }
-      } else if (t === ET.LWPOLYLINE.value) {
-        const vl = e.getVertexList();
-        for (let j = 0; j < vl.size(); j++) { const v = vl.get(j); expand(v.x, v.y); }
-      } else if (t === ET.POLYLINE.value) {
-        const vl = e.getVertexList();
-        for (let j = 0; j < vl.size(); j++) { const v = vl.get(j); expand(v.basePoint.x, v.basePoint.y); }
+
+    // Bounding box — include all entity types
+    let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+    const expand = (x, y) => {
+      if (isFinite(x) && isFinite(y)) {
+        if (x < minX) minX = x; if (x > maxX) maxX = x;
+        if (y < minY) minY = y; if (y > maxY) maxY = y;
       }
+    };
+    for (let i = 0; i < n; i++) {
+      try {
+        const e = entities.get(i); const t = e.eType.value;
+        if (t === EV.LINE) { expand(e.basePoint.x, e.basePoint.y); expand(e.secPoint.x, e.secPoint.y); }
+        else if (t === EV.ARC || t === EV.CIRCLE) { expand(e.basePoint.x - e.radius, e.basePoint.y - e.radius); expand(e.basePoint.x + e.radius, e.basePoint.y + e.radius); }
+        else if (t === EV.LWPOLYLINE) { const vl = e.getVertexList(); for (let j = 0; j < vl.size(); j++) { const v = vl.get(j); expand(v.x, v.y); } }
+        else if (t === EV.POLYLINE) { const vl = e.getVertexList(); for (let j = 0; j < vl.size(); j++) { expand(vl.get(j).basePoint.x, vl.get(j).basePoint.y); } }
+        else if (t === EV.SPLINE) { try { const cp = e.getControlList(); for (let j = 0; j < cp.size(); j++) { expand(cp.get(j).x, cp.get(j).y); } } catch {} }
+        else if (t === EV.TEXT || t === EV.MTEXT) { try { expand(e.basePoint.x, e.basePoint.y); } catch {} }
+        else if (t === EV.DIMENSION) { try { expand(e.basePoint.x, e.basePoint.y); try { expand(e.defPoint.x, e.defPoint.y); } catch {} try { expand(e.textPoint.x, e.textPoint.y); } catch {} } catch {} }
+      } catch {}
     }
 
     if (!isFinite(minX)) throw new Error("No renderable geometry");
-    const W = 1024, H = 1024, PAD = 32;
+
+    const W = 2048, H = 2048, PAD = 56;
     const dw = maxX - minX || 1, dh = maxY - minY || 1;
     const scale = Math.min((W - PAD * 2) / dw, (H - PAD * 2) / dh);
     const tx = x => PAD + (x - minX) * scale;
-    const ty = y => H - PAD - (y - minY) * scale; // flip Y
+    const ty = y => H - PAD - (y - minY) * scale;
 
     const canvas = document.createElement("canvas");
     canvas.width = W; canvas.height = H;
     const ctx = canvas.getContext("2d");
-    ctx.fillStyle = "#fff"; ctx.fillRect(0, 0, W, H);
-    ctx.strokeStyle = "#1a1a1a"; ctx.lineWidth = 1;
+    ctx.fillStyle = "#fafafa"; ctx.fillRect(0, 0, W, H);
 
+    // Draw pass 1 — geometry (lines, arcs, polylines, splines)
     for (let i = 0; i < n; i++) {
-      const e = entities.get(i);
-      const t = e.eType.value;
-      ctx.beginPath();
-      if (t === ET.LINE.value) {
-        ctx.moveTo(tx(e.basePoint.x), ty(e.basePoint.y));
-        ctx.lineTo(tx(e.secPoint.x), ty(e.secPoint.y));
-        ctx.stroke();
-      } else if (t === ET.CIRCLE.value) {
-        ctx.arc(tx(e.basePoint.x), ty(e.basePoint.y), e.radius * scale, 0, Math.PI * 2);
-        ctx.stroke();
-      } else if (t === ET.ARC.value) {
-        // DXF arcs: CCW, Y-flipped so angles negate
-        const cx = tx(e.basePoint.x), cy = ty(e.basePoint.y), r = e.radius * scale;
-        const sa = -e.startAngle * Math.PI / 180;
-        const ea = -e.endAngle * Math.PI / 180;
-        ctx.arc(cx, cy, r, sa, ea, true);
-        ctx.stroke();
-      } else if (t === ET.LWPOLYLINE.value) {
-        const vl = e.getVertexList(); const sz = vl.size();
-        if (sz === 0) continue;
-        const closed = (e.flags & 1) !== 0;
-        ctx.moveTo(tx(vl.get(0).x), ty(vl.get(0).y));
-        for (let j = 0; j < sz; j++) {
-          const v = vl.get(j);
-          const vn = vl.get((j + 1) % sz);
-          if (!vn || (!closed && j === sz - 1)) continue;
-          if (v.bulge !== 0) {
-            // Bulge → arc
-            const x1 = tx(v.x), y1 = ty(v.y), x2 = tx(vn.x), y2 = ty(vn.y);
-            const b = v.bulge, d = Math.sqrt((x2 - x1) ** 2 + (y2 - y1) ** 2);
-            const r = Math.abs(d * (b * b + 1) / (4 * Math.abs(b)));
-            const a = Math.atan2(y2 - y1, x2 - x1) - Math.PI / 2 * Math.sign(b);
-            const mx = (x1 + x2) / 2 + (r - d * Math.abs(b) / 2) * Math.cos(a) * Math.sign(b);
-            const my = (y1 + y2) / 2 + (r - d * Math.abs(b) / 2) * Math.sin(a) * Math.sign(b);
-            const ang1 = Math.atan2(y1 - my, x1 - mx);
-            const ang2 = Math.atan2(y2 - my, x2 - mx);
-            ctx.arc(mx, my, r, ang1, ang2, b < 0);
-          } else {
-            ctx.lineTo(tx(vn.x), ty(vn.y));
+      try {
+        const e = entities.get(i); const t = e.eType.value;
+        let layer = ""; try { layer = e.layer || ""; } catch {}
+        ctx.strokeStyle = layerColor(layer);
+        ctx.lineWidth = /wall|стін|перег/.test((layer || "").toLowerCase()) ? 2 : 1;
+        ctx.beginPath();
+
+        if (t === EV.LINE) {
+          ctx.moveTo(tx(e.basePoint.x), ty(e.basePoint.y));
+          ctx.lineTo(tx(e.secPoint.x), ty(e.secPoint.y));
+          ctx.stroke();
+        } else if (t === EV.CIRCLE) {
+          ctx.arc(tx(e.basePoint.x), ty(e.basePoint.y), e.radius * scale, 0, Math.PI * 2);
+          ctx.stroke();
+        } else if (t === EV.ARC) {
+          const cx = tx(e.basePoint.x), cy = ty(e.basePoint.y), r = e.radius * scale;
+          ctx.arc(cx, cy, r, -e.startAngle * Math.PI / 180, -e.endAngle * Math.PI / 180, true);
+          ctx.stroke();
+        } else if (t === EV.LWPOLYLINE) {
+          const vl = e.getVertexList(); const sz = vl.size();
+          if (sz === 0) continue;
+          const closed = (e.flags & 1) !== 0;
+          ctx.moveTo(tx(vl.get(0).x), ty(vl.get(0).y));
+          for (let j = 0; j < sz; j++) {
+            const v = vl.get(j), vn = vl.get((j + 1) % sz);
+            if (!vn || (!closed && j === sz - 1)) continue;
+            if (v.bulge !== 0) {
+              const x1 = tx(v.x), y1 = ty(v.y), x2 = tx(vn.x), y2 = ty(vn.y);
+              const b = v.bulge, d = Math.sqrt((x2 - x1) ** 2 + (y2 - y1) ** 2);
+              const r = Math.abs(d * (b * b + 1) / (4 * Math.abs(b)));
+              const a = Math.atan2(y2 - y1, x2 - x1) - Math.PI / 2 * Math.sign(b);
+              const mx = (x1 + x2) / 2 + (r - d * Math.abs(b) / 2) * Math.cos(a) * Math.sign(b);
+              const my = (y1 + y2) / 2 + (r - d * Math.abs(b) / 2) * Math.sin(a) * Math.sign(b);
+              ctx.arc(mx, my, r, Math.atan2(y1 - my, x1 - mx), Math.atan2(y2 - my, x2 - mx), b < 0);
+            } else { ctx.lineTo(tx(vn.x), ty(vn.y)); }
           }
+          if (closed) ctx.closePath();
+          ctx.stroke();
+        } else if (t === EV.POLYLINE) {
+          const vl = e.getVertexList(); const sz = vl.size();
+          if (sz === 0) continue;
+          ctx.moveTo(tx(vl.get(0).basePoint.x), ty(vl.get(0).basePoint.y));
+          for (let j = 1; j < sz; j++) ctx.lineTo(tx(vl.get(j).basePoint.x), ty(vl.get(j).basePoint.y));
+          if (e.flags & 1) ctx.closePath();
+          ctx.stroke();
+        } else if (t === EV.SPLINE) {
+          try {
+            const cp = e.getControlList(); const sz = cp.size();
+            if (sz >= 2) {
+              ctx.moveTo(tx(cp.get(0).x), ty(cp.get(0).y));
+              for (let j = 1; j < sz; j++) ctx.lineTo(tx(cp.get(j).x), ty(cp.get(j).y));
+              ctx.stroke();
+            }
+          } catch {}
+        } else if (t === EV.DIMENSION) {
+          try {
+            ctx.strokeStyle = "#2471a3";
+            ctx.lineWidth = 1;
+            // dimension line: basePoint → defPoint
+            const bx = tx(e.basePoint.x), by = ty(e.basePoint.y);
+            let dx = bx, dy = by;
+            try { dx = tx(e.defPoint.x); dy = ty(e.defPoint.y); } catch {}
+            ctx.beginPath(); ctx.moveTo(bx, by); ctx.lineTo(dx, dy); ctx.stroke();
+            // arrows at endpoints
+            const drawArrow = (x1, y1, x2, y2) => {
+              const angle = Math.atan2(y2 - y1, x2 - x1);
+              const aLen = 8;
+              ctx.beginPath();
+              ctx.moveTo(x1, y1);
+              ctx.lineTo(x1 + aLen * Math.cos(angle + 2.8), y1 + aLen * Math.sin(angle + 2.8));
+              ctx.moveTo(x1, y1);
+              ctx.lineTo(x1 + aLen * Math.cos(angle - 2.8), y1 + aLen * Math.sin(angle - 2.8));
+              ctx.stroke();
+            };
+            drawArrow(bx, by, dx, dy);
+            drawArrow(dx, dy, bx, by);
+          } catch {}
         }
-        if (closed) ctx.closePath();
-        ctx.stroke();
-      } else if (t === ET.POLYLINE.value) {
-        const vl = e.getVertexList(); const sz = vl.size();
-        if (sz === 0) continue;
-        ctx.moveTo(tx(vl.get(0).basePoint.x), ty(vl.get(0).basePoint.y));
-        for (let j = 1; j < sz; j++) ctx.lineTo(tx(vl.get(j).basePoint.x), ty(vl.get(j).basePoint.y));
-        if (e.flags & 1) ctx.closePath();
-        ctx.stroke();
-      }
+      } catch {}
     }
 
-    return canvas.toDataURL("image/jpeg", 0.85);
+    // Draw pass 2 — text labels and dimension values on top
+    for (let i = 0; i < n; i++) {
+      try {
+        const e = entities.get(i); const t = e.eType.value;
+        if (t === EV.TEXT || t === EV.MTEXT) {
+          const px = tx(e.basePoint.x), py = ty(e.basePoint.y);
+          let txt = ""; try { txt = (e.text || "").replace(/\\[^;]+;/g, "").trim(); } catch {}
+          if (!txt) continue;
+          const fh = Math.max(9, Math.min((e.height || 200) * scale, 28));
+          ctx.font = `${fh}px sans-serif`;
+          ctx.fillStyle = "#1a1a1a";
+          ctx.fillText(txt.slice(0, 60), px, py);
+        } else if (t === EV.DIMENSION) {
+          try {
+            let txt = ""; try { txt = (e.text || "").replace(/\\[^;]+;/g, "").trim(); } catch {}
+            // textPoint is where the dimension value sits; fallback to midpoint of dim line
+            let tpx, tpy;
+            try { tpx = tx(e.textPoint.x); tpy = ty(e.textPoint.y); } catch {
+              tpx = (tx(e.basePoint.x) + (e.defPoint ? tx(e.defPoint.x) : tx(e.basePoint.x))) / 2;
+              tpy = (ty(e.basePoint.y) + (e.defPoint ? ty(e.defPoint.y) : ty(e.basePoint.y))) / 2 - 6;
+            }
+            if (txt) {
+              ctx.font = "10px sans-serif";
+              ctx.fillStyle = "#2471a3";
+              const tw = ctx.measureText(txt).width;
+              ctx.fillStyle = "rgba(250,250,250,0.75)";
+              ctx.fillRect(tpx - tw / 2 - 2, tpy - 10, tw + 4, 13);
+              ctx.fillStyle = "#2471a3";
+              ctx.fillText(txt.slice(0, 20), tpx - tw / 2, tpy);
+            }
+          } catch {}
+        }
+      } catch {}
+    }
+
+    return canvas.toDataURL("image/jpeg", 0.88);
   } finally {
     database.delete();
     handler.delete();
@@ -299,7 +384,12 @@ async function parseDWGBinary(file) {
     const parsed = parseDXF(dxfText);
     return `=== DWG→DXF: ${file.name} ===\n${parsed}`;
   } catch (e) {
-    return `=== DWG ФАЙЛ: ${file.name} ===\n⚠️ Конвертація не вдалась: ${e.message}\nРекомендація: збережіть як DXF з AutoCAD.`;
+    console.warn(`[DWG text] ${file.name}: ${e.message}`, e);
+    const isFormatErr = e.message?.includes("не вдалось прочитати") || e.message?.includes("format");
+    const hint = isFormatErr
+      ? "Формат DWG не підтримується браузерним парсером. Відкрийте файл в AutoCAD/BricsCAD та збережіть як DXF."
+      : `Помилка: ${e.message}`;
+    return `=== DWG ФАЙЛ: ${file.name} ===\n⚠️ ${hint}`;
   }
 }
 
@@ -577,7 +667,7 @@ function PageGallery({ file, onClose, onTogglePage, onSetPageCategory }) {
       <div style={{ flex: 1, display: "flex", overflow: "hidden" }}>
         <div style={{ flex: 1, overflowY: "auto", padding: 16 }}>
           <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(160px, 1fr))", gap: 12 }}>
-            {filtered.map((pg, rawIdx) => {
+            {filtered.map((pg) => {
             const globalIdx = pages.indexOf(pg);
             const selected = pg._selected !== false;
             const cat = pg._category;
@@ -677,7 +767,7 @@ function UploadBox({ label, files, onAdd, onRemove, onUpdateFile, color = "#888"
     if (_dragging) { _dragging.remove(); _dragging = null; }
     else { Array.from(e.dataTransfer.files).forEach(onAdd); }
   };
-  const ico = { pdf: "📄", dwg: "⚠️", dxf: "📐", excel: "📊", text: "📝", image: "🖼️", other: "📎" };
+  const ico = { pdf: "📄", dwg: "📐", dxf: "📐", excel: "📊", text: "📝", image: "🖼️", other: "📎" };
   return (
     <div>
       {label && <div style={{ fontSize: 10, letterSpacing: "0.14em", color: "#888", marginBottom: note ? 2 : 5, fontFamily: "monospace" }}>{label}</div>}
@@ -687,15 +777,18 @@ function UploadBox({ label, files, onAdd, onRemove, onUpdateFile, color = "#888"
         <div style={{ display: "flex", gap: 6, flexWrap: "wrap", alignItems: "center", justifyContent: files.length === 0 ? "center" : "flex-start" }}>
           {files.map((f, i) => {
             const prev = f.preview || f.pages?.[0]?.preview;
+            const textFailed = f.textContent?.includes("не вдалась") || f.textContent?.includes("помилка читання");
+            const hasWarning = f._done && !f._error && textFailed && !f.pages?.length;
+            const statusColor = f._error ? "#e74c3c" : hasWarning ? "#e67e22" : f._done ? "#27ae60" : "#ddd";
             return (
               <div key={f._id || i} style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 3, flexShrink: 0 }}>
                 <div draggable={!f._loading && f._done} onDragStart={() => { _dragging = { file: f, remove: () => onRemove(i) }; }} onDragEnd={() => { _dragging = null; }}
                   style={{ position: "relative", width: 70, height: 70, cursor: (!f._loading && f._done) ? "grab" : "default" }}>
                   {prev && f.type !== "excel"
-                    ? <img src={prev} style={{ width: "100%", height: "100%", objectFit: "cover", borderRadius: 5, border: `1px solid ${f._error ? "#e74c3c" : f._done ? color : "#ddd"}`, filter: f._loading ? "brightness(0.4)" : "none" }} />
-                    : <div style={{ width: "100%", height: "100%", borderRadius: 5, border: `1px solid ${f._error ? "#e74c3c" : f._done ? color : "#ddd"}`, background: f._error ? "#3a1a1a" : f.type === "dwg" ? "#0a1929" : f.type === "excel" ? "#0d2b0d" : "#f0eeea", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 2 }}>
-                        <div style={{ fontSize: 18 }}>{f._error ? "⚠️" : ico[f.type] || ico.other}</div>
-                        <div style={{ fontSize: 7, color: f._error ? "#ff8888" : "#888", fontFamily: "monospace", textAlign: "center", padding: "0 3px", wordBreak: "break-all", lineHeight: 1.2 }}>{f._error ? "ERR" : (f.ext || f.type?.toUpperCase() || "...")}</div>
+                    ? <img src={prev} style={{ width: "100%", height: "100%", objectFit: "cover", borderRadius: 5, border: `1px solid ${statusColor}`, filter: f._loading ? "brightness(0.4)" : "none" }} />
+                    : <div style={{ width: "100%", height: "100%", borderRadius: 5, border: `1px solid ${statusColor}`, background: f._error ? "#3a1a1a" : f.type === "dwg" ? "#0a1929" : f.type === "excel" ? "#0d2b0d" : "#f0eeea", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 2 }}>
+                        <div style={{ fontSize: 18 }}>{f._error ? "⚠️" : hasWarning ? "⚠️" : ico[f.type] || ico.other}</div>
+                        <div style={{ fontSize: 7, color: f._error ? "#ff8888" : hasWarning ? "#e67e22" : "#888", fontFamily: "monospace", textAlign: "center", padding: "0 3px", wordBreak: "break-all", lineHeight: 1.2 }}>{f._error ? "ERR" : hasWarning ? "→DXF" : (f.ext || f.type?.toUpperCase() || "...")}</div>
                       </div>}
                   {f._loading && (
                     <div style={{ position: "absolute", inset: 0, borderRadius: 5, background: "rgba(0,0,0,0.7)", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center" }}>
@@ -707,7 +800,7 @@ function UploadBox({ label, files, onAdd, onRemove, onUpdateFile, color = "#888"
                       <button onPointerDown={e => { e.stopPropagation(); f._ctrl?.abort(); }} style={{ marginTop: 2, background: "#e74c3c", border: "none", borderRadius: 3, color: "#fff", fontSize: 8, padding: "2px 5px", cursor: "pointer" }}>✕</button>
                     </div>
                   )}
-                  {!f._loading && f._done && <div style={{ position: "absolute", top: -5, left: -5, width: 15, height: 15, background: color, borderRadius: "50%", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 8, color: "#fff" }}>✓</div>}
+                  {!f._loading && f._done && <div style={{ position: "absolute", top: -5, left: -5, width: 15, height: 15, background: statusColor, borderRadius: "50%", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 8, color: "#fff" }}>{f._error || hasWarning ? "!" : "✓"}</div>}
                   {!f._loading && f.pages?.length > 1 && (() => {
                     const sel = f.pages.filter(p => p._selected !== false).length;
                     const total = f.pages.length;
@@ -782,7 +875,7 @@ async function callAPI(parts, retries = 2, apiKey = "") {
           "anthropic-dangerous-direct-browser-access": "true",
           "x-api-key": apiKey,
         },
-        body: JSON.stringify({ model: "claude-sonnet-4-20250514", max_tokens: 16000, messages: [{ role: "user", content: parts }] })
+        body: JSON.stringify({ model: "claude-sonnet-4-6", max_tokens: 64000, temperature: 0, messages: [{ role: "user", content: parts }] })
       });
       let data; try { data = await resp.json(); } catch { throw new Error(`HTTP ${resp.status}`); }
       if (!resp.ok) {
@@ -818,6 +911,9 @@ function filesToParts(files, fallbackLabel) {
     (f.pages || []).filter(p => p.b64 && p._selected !== false).forEach((pg, pi) => {
       const pageLabel = `${fullLabel}${pi > 0 ? ` стор.${pi + 1}` : ""}`;
       if (pg.text) parts.push({ type: "text", text: `${pageLabel} — витягнутий текст (використовуй для точних розмірів, матеріалів та специфікацій):\n${pg.text}` });
+      // Text-rich pages (e.g. TZ docs, specs): skip image — text layer is sufficient
+      // Visual pages (scans, moodboards, drawings): always send image
+      if (pg._textRich) return;
       if (!f.textContent || f.type === "dwg") {
         parts.push({ type: "text", text: `${pageLabel}:` });
       }
@@ -829,11 +925,160 @@ function filesToParts(files, fallbackLabel) {
 
 // ─── SOW Templates ────────────────────────────────────────────────────────────
 const SOW_TEMPLATES = {
-  "Інтер'єр житловий":    ["Планування з розмірами","Стиль / атмосфера / референси","Матеріали підлоги","Матеріали стін","Оздоблення стелі","Освітлення (тип та схема)","Меблі та декор","Час доби та сезон","Ракурси / кількість зображень","Формат та дедлайн"],
-  "Інтер'єр комерційний": ["Планування з зонуванням","Концепція бренду / фірмові кольори","Матеріали та оздоблення","Обладнання та меблі","Освітлення","Наявність людей на рендері","Логотип та написи","Ракурси / кількість зображень","Формат та дедлайн"],
-  "Екстер'єр / фасад":    ["Фасадні креслення","Матеріали оздоблення","Ландшафт та оточення","Час доби та пора року","Погодні умови","Ракурси","Формат та дедлайн"],
+  "Інтер'єр житловий":    [
+    "Тип простору (житловий)",
+    "Креслення плану з розміщенням меблів (DWG або PDF) — обов'язково",
+    "Відбивний план / схема освітлення (RCP)",
+    "Настінні розгортки (для просторів з нішами або складним оздобленням)",
+    "Ракурси камер / переваги кутів зйомки",
+    "Меблі та декор — посилання, бренди, розміри для кожної позиції",
+    "Оздоблення підлоги — посилання або фото у хорошій якості",
+    "Оздоблення стін — посилання або фото у хорошій якості",
+    "Оздоблення стелі — посилання або фото у хорошій якості",
+    "Предмети / аксесуари — фото або посилання",
+    "Вид з вікна / фон (за замовчуванням обирається за локацією проекту)",
+    "Настрій / час доби (день за замовчуванням; вечір або ніч — за запитом)",
+    "Референси стилю та атмосфери",
+    "Роздільність: 4K / 5K / 8K",
+    "Формат файлу: JPEG / PNG / TIFF",
+    "DPI: 72 (онлайн) / 300 (друк)",
+    "Співвідношення сторін: 16x9 / 9x16 / 4x3",
+    "Кількість зображень",
+    "Призначення: сайт / соцмережі / презентація / друк",
+    "Дедлайн"
+  ],
+  "Інтер'єр комерційний": [
+    "Тип простору (комерційний)",
+    "Креслення плану з зонуванням та розміщенням обладнання (DWG або PDF) — обов'язково",
+    "Відбивний план / схема освітлення (RCP)",
+    "Настінні розгортки (для просторів з нішами або складним оздобленням)",
+    "Ракурси камер / переваги кутів зйомки",
+    "Концепція бренду / фірмові кольори / гайдлайн",
+    "Логотип та написи (вектор або PNG з прозорим фоном)",
+    "Меблі та обладнання — посилання, бренди, розміри",
+    "Оздоблення підлоги, стін, стелі — посилання або фото",
+    "Предмети / аксесуари — фото або посилання",
+    "Наявність людей на рендері",
+    "Вид з вікна / фон",
+    "Настрій / час доби (день за замовчуванням)",
+    "Референси стилю та атмосфери",
+    "Роздільність: 4K / 5K / 8K",
+    "Формат файлу: JPEG / PNG / TIFF",
+    "DPI: 72 (онлайн) / 300 (друк)",
+    "Співвідношення сторін: 16x9 / 9x16 / 4x3",
+    "Кількість зображень",
+    "Призначення: сайт / соцмережі / презентація / друк",
+    "Дедлайн"
+  ],
+  "Екстер'єр / фасад":    [
+    "Тип об'єкту (житловий / комерційний)",
+    "Креслення: плани, фасади, розрізи (DWG або PDF) — обов'язково",
+    "CAD-модель (опційно): RVT, SKP, FBX — прискорює проект і знижує вартість",
+    "Фото ділянки / фото існуючого об'єкту",
+    "Локація проекту (для підбору оточення та неба)",
+    "Переваги кутів камер",
+    "Матеріали оздоблення фасаду — специфікація або фото з прикладами",
+    "Ландшафтний план: тверде покриття, рослинність, розміщення",
+    "Настрій / освітлення / сезон (за замовчуванням: літо, день)",
+    "Референси з коментарями — що саме взяти з кожного (небо, вода, дорога, трава, люди, матеріали)",
+    "Погодні умови та атмосфера",
+    "Наявність людей / транспорту на рендері",
+    "Роздільність: 4K / 5K / 8K",
+    "Формат файлу: JPEG / PNG / TIFF",
+    "DPI: 72 (онлайн) / 300 (друк)",
+    "Співвідношення сторін: 16x9 / 9x16 / 4x3 / 3x2",
+    "Кількість зображень",
+    "Призначення: сайт / соцмережі / презентація",
+    "Дедлайн"
+  ],
+  "Лайфстайл рендеринг":  [
+    "Тип сцени (інтер'єр / вулиця)",
+    "Тип workflow: Our Vision / Your Vision / Template",
+    "--- OUR VISION (спрощений бриф) ---",
+    "Специфікація 3D-моделей — посилання, бренд, розміри, текстури",
+    "Загальні побажання та референси стилю з коментарями що саме взяти",
+    "--- YOUR VISION (стандартний бриф) ---",
+    "Специфікація 3D-моделей — посилання, бренд, розміри, текстури",
+    "Схема розміщення меблів з позначеннями",
+    "Специфікація оздоблення: колір стін, шпалери, панелі — посилання",
+    "Референс базового зображення з коментарями що додати / прибрати",
+    "Декорування: подушки, рослини, аксесуари — посилання або з бібліотеки",
+    "--- TEMPLATE (шаблонна сцена) ---",
+    "Специфікація 3D-моделей — посилання, бренд, розміри",
+    "Вибір шаблонної сцени з бібліотеки",
+    "Опис змін до шаблону (до 30%)",
+    "--- ЗАГАЛЬНЕ ---",
+    "3D-модель продукту: надає клієнт (.3ds) або моделюємо з нуля",
+    "Якщо модель від клієнта: відповідність референсам, відсутність дефектів геометрії",
+    "Текстури та кольори: фото продукту з усіх сторін + деталі крупним планом",
+    "Якщо продукту немає: посилання на матеріали (від 2000x2000px) + HEX-коди",
+    "Настрій / час доби (день за замовчуванням; ранок або вечір — за запитом)",
+    "Роздільність: 4K / 5K",
+    "Формат: JPG / PNG / TIFF",
+    "DPI: 72 / 300",
+    "Співвідношення сторін: 16x9 / 9x16 / 4x3 / 1x1",
+    "Кількість зображень",
+    "Дедлайн"
+  ],
+  "Silo рендеринг":       [
+    "3D-модель продукту: надає клієнт (.3ds) або моделюємо з нуля",
+    "Якщо модель від клієнта: відповідність референсам, відсутність дефектів геометрії",
+    "Текстури та кольори: фото продукту з усіх сторін + деталі крупним планом",
+    "Якщо продукту немає: посилання на матеріали (від 2000x2000px) + HEX-коди",
+    "Кути зйомки: Front / Side / Top / Back / Corner ¾ / Hero Shot / Close-up / Feature Callout / Component View / Dimension Image / Product Set / Size & Proportion",
+    "Тінь: без тіні (за замовчуванням) / під об'єктом / праворуч / ліворуч",
+    "Фон: білий (за замовчуванням) / чорний / прозорий / інший (HEX-код)",
+    "Роздільність: 2K / 4K / 5K",
+    "Формат файлу: JPEG / PNG / TIF / PSD",
+    "DPI: 72 (онлайн) / 300 (друк)",
+    "Співвідношення сторін: 16x9 / 9x16 / 4x3 / 1x1",
+    "Найменування файлів: стандартне (ID задачі + кут) / інше",
+    "Призначення: сайт / презентація / каталог",
+    "Дедлайн"
+  ],
   "Мастерплан":           ["Генплан з масштабом","Типологія будівель","Озеленення та ландшафт","Дороги та інфраструктура","Час доби та сезон","Стиль подачі","Формат та дедлайн"],
-  "Продуктова візуалізація": ["Модель / технічні креслення","Матеріали та покриття","Тло та оточення","Освітлення","Ракурси","Формат та дедлайн"],
+  "Продуктова візуалізація": [
+    "3D-модель продукту: надає клієнт (.3ds / .fbx / .obj) або моделюємо з нуля",
+    "Якщо модель від клієнта: відповідність референсам, відсутність дефектів геометрії",
+    "Технічні креслення або CAD-файл (DWG, PDF, wireframe) — якщо моделюємо",
+    "Якщо креслень немає: габарити продукту (висота / ширина / глибина) + одиниці виміру",
+    "Фото продукту: вигляд спереду, збоку, ззаду, кут 3/4",
+    "Фото деталей крупним планом",
+    "Матеріали та покриття: фото або посилання на референси матеріалів",
+    "Якщо матеріалу немає: посилання на матеріали (від 2000x2000px) + HEX-коди",
+    "Тло та оточення: студійний фон / інтер'єр / вулиця / інше",
+    "Якщо студійний фон: колір або градієнт (HEX)",
+    "Якщо сцена: опис або референс оточення",
+    "Освітлення: студійне (за замовчуванням) / природне / декоративне / мішане",
+    "Настрій / час доби (за замовчуванням: день)",
+    "Ракурси / кути камери: Front / Side / Hero Shot / Close-up / 3/4 / інше",
+    "Кількість ракурсів",
+    "Референси стилю подачі з коментарями — що саме взяти",
+    "Роздільність: 2K / 4K / 5K",
+    "Формат файлу: JPEG / PNG / TIFF / PSD",
+    "DPI: 72 (онлайн) / 300 (друк)",
+    "Співвідношення сторін: 16x9 / 1x1 / 4x3 / інше",
+    "Кількість фінальних зображень",
+    "Призначення: сайт / каталог / презентація / соцмережі / друк",
+    "Дедлайн"
+  ],
+  "3D Моделювання продукту": [
+    "Призначення моделі: рендеринг / AR / VR / анімація / 3D-друк",
+    "Ліміт полігонів: без ліміту / до [X]",
+    "Вихідний формат файлу: .max / .fbx / .obj",
+    "Метод UV-розгортки: Tiling / RealWorld",
+    "Тип матеріалу: Corona / V-Ray / інше",
+    "Формат сітки: трикутники / прямокутники",
+    "Рівень деталізації: Low / Medium / High",
+    "Креслення або CAD-модель (DWG, PDF, wireframe)",
+    "Якщо креслень немає: габарити продукту (висота / ширина / глибина) + одиниці виміру (мм / см / дюйми)",
+    "Розміри кожної частини продукту окремо",
+    "Фото продукту: вигляд спереду, збоку, ззаду, кут 3/4",
+    "Фото деталей крупним планом",
+    "Текстури та кольори: фото продукту в потрібному матеріалі",
+    "Якщо матеріалу немає: посилання на матеріали (від 2000x2000px) + HEX-коди",
+    "Дедлайн"
+  ],
 };
 
 const CAT_COLOR = {
@@ -891,7 +1136,83 @@ function ImageLightbox({ imgRef, itemText, onClose }) {
   );
 }
 
-function TzItem({ item, onEdit, onRemove, onOpenRef }) {
+function DocViewer({ source, initialPage, itemText, onClose }) {
+  const [page, setPage] = useState(initialPage || 1);
+  useEffect(() => { setPage(initialPage || 1); }, [initialPage, source]);
+  const pages = source?.pages || [];
+  const total = pages.length;
+  const cur = pages[page - 1];
+  const b64 = cur?.b64 ? `data:image/jpeg;base64,${cur.b64}` : null;
+
+  if (!b64 && !total) return null;
+
+  return (
+    <div onClick={onClose}
+      style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.92)", zIndex: 2000, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center" }}>
+      {/* Header */}
+      <div onClick={e => e.stopPropagation()}
+        style={{ width: "min(94vw,1040px)", display: "flex", alignItems: "center", gap: 10, marginBottom: 8 }}>
+        <div style={{ flex: 1 }}>
+          <div style={{ fontSize: 10, fontFamily: "monospace", color: "#888", marginBottom: 2 }}>{source.name || source.filename}</div>
+          <div style={{ fontSize: 9, fontFamily: "monospace", color: "#555" }}>{total} сторін{total === 1 ? "ка" : total < 5 ? "ки" : "ок"}</div>
+        </div>
+        <button onClick={onClose} style={{ background: "none", border: "none", color: "#666", fontSize: 22, cursor: "pointer", lineHeight: 1 }}>✕</button>
+      </div>
+
+      {/* Image */}
+      <div onClick={e => e.stopPropagation()}
+        style={{ width: "min(94vw,1040px)", maxHeight: "72vh", overflow: "hidden", borderRadius: 8, background: "#111", display: "flex", alignItems: "center", justifyContent: "center", position: "relative" }}>
+        {b64
+          ? <img src={b64} alt={`стор. ${page}`} style={{ maxWidth: "100%", maxHeight: "72vh", objectFit: "contain", display: "block" }} />
+          : <div style={{ color: "#555", fontFamily: "monospace", fontSize: 11 }}>Зображення недоступне</div>}
+        {/* Prev / Next overlays */}
+        {page > 1 && (
+          <button onClick={() => setPage(p => p - 1)}
+            style={{ position: "absolute", left: 0, top: 0, bottom: 0, width: "15%", background: "transparent", border: "none", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "flex-start", paddingLeft: 12 }}>
+            <span style={{ fontSize: 28, color: "rgba(255,255,255,0.4)" }}>‹</span>
+          </button>
+        )}
+        {page < total && (
+          <button onClick={() => setPage(p => p + 1)}
+            style={{ position: "absolute", right: 0, top: 0, bottom: 0, width: "15%", background: "transparent", border: "none", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "flex-end", paddingRight: 12 }}>
+            <span style={{ fontSize: 28, color: "rgba(255,255,255,0.4)" }}>›</span>
+          </button>
+        )}
+      </div>
+
+      {/* Pagination + thumbnails */}
+      <div onClick={e => e.stopPropagation()}
+        style={{ width: "min(94vw,1040px)", marginTop: 8, display: "flex", alignItems: "center", gap: 8, overflowX: "auto" }}>
+        <span style={{ fontSize: 10, fontFamily: "monospace", color: "#666", flexShrink: 0 }}>{page} / {total}</span>
+        <div style={{ display: "flex", gap: 4, flex: 1, overflowX: "auto" }}>
+          {pages.map((pg, i) => {
+            const thumb = pg.preview || (pg.b64 ? `data:image/jpeg;base64,${pg.b64}` : null);
+            const isActive = i + 1 === page;
+            return (
+              <div key={i} onClick={() => setPage(i + 1)}
+                style={{ flexShrink: 0, width: 44, height: 33, borderRadius: 3, overflow: "hidden", cursor: "pointer", border: isActive ? "2px solid #2980b9" : "2px solid transparent", opacity: isActive ? 1 : 0.5, transition: "opacity 0.15s, border-color 0.15s" }}>
+                {thumb
+                  ? <img src={thumb} style={{ width: "100%", height: "100%", objectFit: "cover" }} />
+                  : <div style={{ width: "100%", height: "100%", background: "#333", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 7, color: "#888", fontFamily: "monospace" }}>{i + 1}</div>}
+              </div>
+            );
+          })}
+        </div>
+      </div>
+
+      {/* Item context */}
+      {itemText && (
+        <div onClick={e => e.stopPropagation()}
+          style={{ width: "min(94vw,1040px)", marginTop: 6, padding: "8px 12px", background: "rgba(255,255,255,0.06)", borderRadius: 6 }}>
+          <span style={{ fontSize: 9, fontFamily: "monospace", color: "#555", marginRight: 8 }}>ВИМОГА:</span>
+          <span style={{ fontSize: 11, color: "#bbb" }}>{itemText}</span>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function TzItem({ item, onEdit, onRemove, onOpenRef, onOpenDoc }) {
   const [editing, setEditing] = useState(false);
   const ref = item.imgRef;
   return (
@@ -927,8 +1248,14 @@ function TzItem({ item, onEdit, onRemove, onOpenRef }) {
           {item.stage && <span style={{ fontSize: 8, fontFamily: "monospace", color: STAGE_COLOR[item.stage] || "#888", border: `1px solid ${STAGE_COLOR[item.stage] || "#888"}`, padding: "1px 5px", borderRadius: 3 }}>{item.stage}</span>}
           {item.source && <span style={{ fontSize: 9, color: "#bbb", fontFamily: "monospace" }}>{item.source}</span>}
           {ref && <span onClick={() => onOpenRef(ref, item.text)} style={{ fontSize: 9, color: "#3498db", fontFamily: "monospace", cursor: "pointer", textDecoration: "underline dotted" }} title="Відкрити джерело">↗ {ref.fileLabel}{ref.pageNum > 1 ? ` стор.${ref.pageNum}` : ""}</span>}
-          {!ref && item.imgRefLabel && <span style={{ fontSize: 9, color: "#e67e22", fontFamily: "monospace" }} title={`Claude вказав: ${item.imgRefLabel}`}>⚠ реф не знайдено</span>}
-          {item.link && <a href={item.link} target="_blank" rel="noreferrer" style={{ fontSize: 9, color: "#3498db", fontFamily: "monospace", textDecoration: "none" }}>🔗 {item.link.replace(/^https?:\/\//, "").slice(0, 40)}</a>}
+          {!ref && item.imgRefLabel && <span onClick={() => onOpenDoc?.(item.imgRefLabel, item.text)} style={{ fontSize: 9, color: "#e67e22", fontFamily: "monospace", cursor: onOpenDoc ? "pointer" : "default", textDecoration: onOpenDoc ? "underline dotted" : "none" }} title={`Відкрити: ${item.imgRefLabel}`}>⚠ {item.imgRefLabel}</span>}
+          {(item.links || []).map((lk, li) => (
+            <a key={li} href={lk.url} target="_blank" rel="noreferrer"
+              title={lk.url}
+              style={{ fontSize: 9, color: "#3498db", fontFamily: "monospace", textDecoration: "none", background: "#f0f7ff", border: "1px solid #d0e8fb", borderRadius: 3, padding: "1px 5px" }}>
+              🔗 {lk.label || lk.url.replace(/^https?:\/\//, "").slice(0, 35)}
+            </a>
+          ))}
         </div>
       </div>
       <button onClick={() => onRemove(item.id)} style={{ background: "none", border: "none", color: "#ddd", cursor: "pointer", fontSize: 14, flexShrink: 0, lineHeight: 1, padding: "2px 4px" }} title="Видалити">×</button>
@@ -936,14 +1263,111 @@ function TzItem({ item, onEdit, onRemove, onOpenRef }) {
   );
 }
 
-function TzReviewStep({ projectType, rooms, tzByRoom, sowMissing, sowUnclear, clientComments, annotation, onEdit, onRemove, onBack }) {
+const SOURCE_TYPE_LABELS = {
+  furniture: "Меблі", material: "Матеріали", lighting: "Освітлення",
+  style_ref: "Стиль", time_of_day: "Час доби", weather: "Погода/сезон",
+  render_quality: "Якість рендеру", camera: "Ракурс", dimensions: "Розміри",
+  logo: "Логотип", comment: "Коментар", other: "Інше",
+};
+const SOURCE_TYPE_COLOR = {
+  furniture: "#2980b9", material: "#8e44ad", lighting: "#f39c12",
+  style_ref: "#27ae60", time_of_day: "#e67e22", weather: "#16a085",
+  render_quality: "#7f8c8d", camera: "#2471a3", dimensions: "#e67e22",
+  logo: "#c0392b", comment: "#95a5a6", other: "#bdc3c7",
+};
+const SOURCE_FILE_ICO = { pdf: "📄", dwg: "📐", dxf: "📐", excel: "📊", text: "📝", image: "🖼️" };
+
+function TzReviewStep({ projectType, rooms, tzByRoom, sowMissing, sowUnclear, clientComments, annotation, conflicts, roadmap, sources, files, sourceTags, onSourceTag, onEdit, onRemove, onBack, onSearchLinks, searchingLinks, linkSearchProgress }) {
   const allRooms = rooms?.length ? ["Загальне", ...rooms.filter(r => r !== "Загальне")] : ["Загальне"];
-  const [viewMode, setViewMode] = useState("rooms"); // "rooms" | "stages"
+  const [viewMode, setViewMode] = useState("rooms"); // "rooms" | "stages" | "table"
   const [activeRoom, setActiveRoom] = useState(allRooms[0]);
   const [activeStage, setActiveStage] = useState(PRODUCTION_STAGES[0]);
   const [lightbox, setLightbox] = useState(null); // { imgRef, itemText }
+  const [docViewer, setDocViewer] = useState(null); // { source, pageNum }
+  const [tableFilter, setTableFilter] = useState({ type: "", room: "", stage: "", search: "" });
+  const [tableSort, setTableSort] = useState({ col: "room", dir: "asc" });
 
   const allItems = Object.values(tzByRoom || {}).flatMap(r => Object.values(r)).flat();
+
+  // Map filename → file object (with pages) for DocViewer
+  const filesByName = useMemo(() => {
+    const m = {};
+    (files || []).forEach(f => { m[f.filename] = f; });
+    return m;
+  }, [files]);
+
+  // Open DocViewer by known filename + page
+  const openDocViewer = (filename, pageNum, itemText) => {
+    const file = filesByName[filename];
+    if (!file) return;
+    setDocViewer({ source: file, pageNum: pageNum || 1, itemText });
+  };
+
+  // Open DocViewer by imgRefLabel (e.g. "CUTSHEET стор.4") — fuzzy match against filenames
+  const openDocByLabel = (label, itemText) => {
+    if (!label || !(files || []).length) return;
+    const norm = s => s.replace(/\[.*?\]/g, '').replace(/\s+/g, ' ').trim().toLowerCase();
+    const raw = norm(label);
+    // Extract page number from "стор.N" or "стор. N"
+    const pageMatch = raw.match(/стор[.\s]+(\d+)/);
+    const pageNum = pageMatch ? parseInt(pageMatch[1]) : 1;
+    const baseName = raw.replace(/стор[.\s]+\d+/g, '').replace(/\s+\d+$/, '').trim();
+    // Find file whose filename (without ext) contains baseName or vice versa
+    const found = (files || []).find(f => {
+      const fn = f.filename.replace(/\.[^.]+$/, '').toLowerCase();
+      return fn.includes(baseName) || baseName.includes(fn);
+    });
+    if (found) setDocViewer({ source: found, pageNum, itemText });
+  };
+
+  const CAT_TO_TYPE = {
+    "Матеріали та текстури": "material",
+    "Меблі та моделі": "todo",
+    "Сезон / атмосфера": "style",
+    "Тип освітлення": "style",
+    "Креслення та планування": "dimension",
+    "Логотип / написи": "todo",
+    "Вимоги клієнта": "todo",
+    "Специфічні запити": "comment",
+  };
+
+  const tableRows = useMemo(() => {
+    const rows = [];
+    allItems.forEach(it => {
+      const type = it.imgRef ? "image" : (CAT_TO_TYPE[it.category] || "todo");
+      rows.push({ id: it.id, type, text: it.text, quote: it.quote, room: it.room || "—", category: it.category || "—", stage: it.stage || "—", source: it.source || "—", img_ref: it.imgRef || null, _item: it });
+    });
+    (conflicts || []).forEach((c, i) => rows.push({ id: `conflict-${i}`, type: "conflict", text: c, quote: null, room: "—", category: "Конфлікт", stage: "—", source: "—", img_ref: null, _item: null }));
+    (sowMissing || []).forEach((m, i) => rows.push({ id: `missing-${i}`, type: "missing", text: m, quote: null, room: "—", category: "SOW відсутнє", stage: "—", source: "—", img_ref: null, _item: null }));
+    (sowUnclear || []).forEach((u, i) => rows.push({ id: `unclear-${i}`, type: "unclear", text: u, quote: null, room: "—", category: "SOW неповно", stage: "—", source: "—", img_ref: null, _item: null }));
+    return rows;
+  }, [allItems, conflicts, sowMissing, sowUnclear]);
+
+  const filteredRows = useMemo(() => {
+    let r = tableRows;
+    if (tableFilter.type) r = r.filter(x => x.type === tableFilter.type);
+    if (tableFilter.room) r = r.filter(x => x.room === tableFilter.room);
+    if (tableFilter.stage) r = r.filter(x => x.stage === tableFilter.stage);
+    if (tableFilter.search) { const q = tableFilter.search.toLowerCase(); r = r.filter(x => x.text?.toLowerCase().includes(q) || x.category?.toLowerCase().includes(q)); }
+    return [...r].sort((a, b) => {
+      const av = a[tableSort.col] || ""; const bv = b[tableSort.col] || "";
+      return tableSort.dir === "asc" ? av.localeCompare(bv) : bv.localeCompare(av);
+    });
+  }, [tableRows, tableFilter, tableSort]);
+
+  const toggleSort = col => setTableSort(s => ({ col, dir: s.col === col && s.dir === "asc" ? "desc" : "asc" }));
+
+  const TYPE_META = {
+    todo:      { label: "TODO",      color: "#2980b9", bg: "#eaf4fb" },
+    material:  { label: "МАТЕРІАЛ",  color: "#8e44ad", bg: "#f5eefb" },
+    style:     { label: "СТИЛЬ",     color: "#27ae60", bg: "#e8f8ee" },
+    dimension: { label: "РОЗМІР",    color: "#e67e22", bg: "#fef5e7" },
+    image:     { label: "ЗОБРАЖЕННЯ",color: "#16a085", bg: "#e8f8f5" },
+    comment:   { label: "КОМЕНТАР",  color: "#7f8c8d", bg: "#f4f6f7" },
+    conflict:  { label: "КОНФЛІКТ",  color: "#e74c3c", bg: "#fde8e8" },
+    missing:   { label: "ВІДСУТНЄ",  color: "#c0392b", bg: "#fde8e8" },
+    unclear:   { label: "НЕПОВНО",   color: "#e67e22", bg: "#fff8ec" },
+  };
 
   const roomData = tzByRoom?.[activeRoom] || {};
   const totalItems = Object.values(tzByRoom || {}).flatMap(r => Object.values(r)).flat().length;
@@ -979,6 +1403,7 @@ function TzReviewStep({ projectType, rooms, tzByRoom, sowMissing, sowUnclear, cl
   return (
     <div style={{ minHeight: "100vh", background: "#f5f4f1", display: "flex", flexDirection: "column" }}>
       {lightbox && <ImageLightbox imgRef={lightbox.imgRef} itemText={lightbox.itemText} onClose={() => setLightbox(null)} />}
+      {docViewer && <DocViewer key={`${docViewer.source?.filename}-${docViewer.pageNum}`} source={docViewer.source} initialPage={docViewer.pageNum} itemText={docViewer.itemText} onClose={() => setDocViewer(null)} />}
       {/* Топ-бар */}
       <div style={{ background: "#1a1a1a", padding: "0 20px", display: "flex", alignItems: "center", gap: 12, height: 44, flexShrink: 0 }}>
         <button onClick={onBack} style={{ background: "none", border: "none", color: "#666", cursor: "pointer", fontSize: 16, padding: 0 }}>←</button>
@@ -991,11 +1416,138 @@ function TzReviewStep({ projectType, rooms, tzByRoom, sowMissing, sowUnclear, cl
             Запит ({(sowMissing?.length || 0) + (sowUnclear?.length || 0)})
           </button>
         )}
+        {onSearchLinks && (
+          <button onClick={onSearchLinks} disabled={searchingLinks}
+            style={{ fontSize: 9, fontFamily: "monospace", background: searchingLinks ? "#1a3a1a" : "#1a2a1a", border: `1px solid ${searchingLinks ? "#27ae60" : "#27ae60"}`, color: "#27ae60", padding: "3px 10px", borderRadius: 4, cursor: searchingLinks ? "not-allowed" : "pointer", display: "flex", alignItems: "center", gap: 5 }}>
+            {searchingLinks
+              ? <>⏳ {linkSearchProgress.done}/{linkSearchProgress.total}</>
+              : <>🔗 Посилання</>}
+          </button>
+        )}
         <button onClick={() => window.print()} style={{ fontSize: 9, fontFamily: "monospace", background: "none", border: "1px solid #333", color: "#666", padding: "3px 10px", borderRadius: 4, cursor: "pointer" }}>PDF</button>
         <button onClick={copyMd} style={{ fontSize: 9, fontFamily: "monospace", background: "none", border: "1px solid #333", color: "#666", padding: "3px 10px", borderRadius: 4, cursor: "pointer" }}>MD</button>
       </div>
 
-      <div style={{ display: "flex", flex: 1, overflow: "hidden" }}>
+      {viewMode === "table" && (
+        <div style={{ flex: 1, overflow: "auto", padding: "16px 20px", background: "#f5f4f1" }}>
+          {/* Filter bar */}
+          <div style={{ display: "flex", gap: 8, marginBottom: 12, flexWrap: "wrap", alignItems: "center" }}>
+            <input
+              placeholder="Пошук..."
+              value={tableFilter.search}
+              onChange={e => setTableFilter(f => ({ ...f, search: e.target.value }))}
+              style={{ fontSize: 11, fontFamily: "monospace", padding: "5px 10px", border: "1px solid #ddd", borderRadius: 4, background: "#fff", width: 180 }}
+            />
+            <select value={tableFilter.type} onChange={e => setTableFilter(f => ({ ...f, type: e.target.value }))}
+              style={{ fontSize: 11, fontFamily: "monospace", padding: "5px 8px", border: "1px solid #ddd", borderRadius: 4, background: "#fff" }}>
+              <option value="">Всі типи</option>
+              {Object.entries(TYPE_META).map(([k, v]) => <option key={k} value={k}>{v.label}</option>)}
+            </select>
+            <select value={tableFilter.room} onChange={e => setTableFilter(f => ({ ...f, room: e.target.value }))}
+              style={{ fontSize: 11, fontFamily: "monospace", padding: "5px 8px", border: "1px solid #ddd", borderRadius: 4, background: "#fff" }}>
+              <option value="">Всі кімнати</option>
+              {allRooms.map(r => <option key={r} value={r}>{r}</option>)}
+            </select>
+            <select value={tableFilter.stage} onChange={e => setTableFilter(f => ({ ...f, stage: e.target.value }))}
+              style={{ fontSize: 11, fontFamily: "monospace", padding: "5px 8px", border: "1px solid #ddd", borderRadius: 4, background: "#fff" }}>
+              <option value="">Всі стадії</option>
+              {PRODUCTION_STAGES.map(s => <option key={s} value={s}>{s}</option>)}
+            </select>
+            <button onClick={() => setViewMode("rooms")}
+              style={{ fontSize: 9, fontFamily: "monospace", background: "none", border: "1px solid #ddd", color: "#888", padding: "4px 10px", borderRadius: 4, cursor: "pointer" }}>← назад</button>
+            <span style={{ fontSize: 10, fontFamily: "monospace", color: "#aaa", marginLeft: "auto" }}>{filteredRows.length} рядків</span>
+            {(tableFilter.type || tableFilter.room || tableFilter.stage || tableFilter.search) && (
+              <button onClick={() => setTableFilter({ type: "", room: "", stage: "", search: "" })}
+                style={{ fontSize: 9, fontFamily: "monospace", padding: "4px 10px", border: "1px solid #ddd", borderRadius: 4, background: "#fff", cursor: "pointer", color: "#e74c3c" }}>✕ скинути</button>
+            )}
+          </div>
+          {/* Table */}
+          <div style={{ background: "#fff", borderRadius: 6, border: "1px solid #e5e5e5", overflow: "hidden" }}>
+            <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 11 }}>
+              <thead>
+                <tr style={{ background: "#f8f7f5", borderBottom: "2px solid #e5e5e5" }}>
+                  {[
+                    { key: "type", label: "ТИП" },
+                    { key: "text", label: "ЗМІСТ" },
+                    { key: "category", label: "КАТЕГОРІЯ" },
+                    { key: "room", label: "КІМНАТА" },
+                    { key: "stage", label: "СТАДІЯ" },
+                    { key: "source", label: "ДЖЕРЕЛО" },
+                  ].map(col => (
+                    <th key={col.key} onClick={() => toggleSort(col.key)}
+                      style={{ padding: "8px 12px", textAlign: "left", fontSize: 8, fontFamily: "monospace", letterSpacing: "0.1em", color: tableSort.col === col.key ? "#1a1a1a" : "#aaa", cursor: "pointer", userSelect: "none", whiteSpace: "nowrap" }}>
+                      {col.label} {tableSort.col === col.key ? (tableSort.dir === "asc" ? "↑" : "↓") : ""}
+                    </th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {filteredRows.map((row, i) => {
+                  const meta = TYPE_META[row.type] || TYPE_META.todo;
+                  // Find the actual file with pages: prefer by img_ref filename, fallback fuzzy by source name
+                  const srcFile = row.img_ref?.filename
+                    ? filesByName[row.img_ref.filename]
+                    : (files || []).find(f => f.filename.toLowerCase().includes((row.source || "").toLowerCase()) || (row.source || "").toLowerCase().includes(f.filename.replace(/\.[^.]+$/, '').toLowerCase()));
+                  return (
+                    <tr key={row.id} style={{ borderBottom: "1px solid #f0eeea", background: i % 2 === 0 ? "#fff" : "#fafaf9" }}
+                      onMouseEnter={e => e.currentTarget.style.background = "#f0f8ff"}
+                      onMouseLeave={e => e.currentTarget.style.background = i % 2 === 0 ? "#fff" : "#fafaf9"}>
+                      {/* Type */}
+                      <td style={{ padding: "8px 12px", whiteSpace: "nowrap" }}>
+                        <span style={{ fontSize: 8, fontWeight: 700, fontFamily: "monospace", letterSpacing: "0.08em", color: meta.color, background: meta.bg, padding: "2px 7px", borderRadius: 3 }}>{meta.label}</span>
+                      </td>
+                      {/* Content */}
+                      <td style={{ padding: "8px 12px", maxWidth: 400 }}>
+                        <div style={{ display: "flex", alignItems: "flex-start", gap: 8 }}>
+                          {row.img_ref && (
+                            <img src={row.img_ref.preview} alt="" onClick={() => setLightbox({ imgRef: row.img_ref, itemText: row.text })}
+                              style={{ width: 36, height: 36, objectFit: "cover", borderRadius: 3, cursor: "pointer", flexShrink: 0, border: "1px solid #e5e5e5" }} />
+                          )}
+                          <div>
+                            <div style={{ fontSize: 11, color: "#1a1a1a", lineHeight: 1.4 }}>{row.text}</div>
+                            {row.quote && <div style={{ fontSize: 9, color: "#aaa", fontStyle: "italic", marginTop: 2, fontFamily: "monospace" }}>"{row.quote}"</div>}
+                          </div>
+                        </div>
+                      </td>
+                      {/* Category */}
+                      <td style={{ padding: "8px 12px", fontSize: 10, color: "#888", whiteSpace: "nowrap" }}>{row.category}</td>
+                      {/* Room */}
+                      <td style={{ padding: "8px 12px", fontSize: 10, color: "#555", whiteSpace: "nowrap" }}>{row.room}</td>
+                      {/* Stage */}
+                      <td style={{ padding: "8px 12px", whiteSpace: "nowrap" }}>
+                        {row.stage && row.stage !== "—" ? (
+                          <span style={{ fontSize: 8, fontFamily: "monospace", color: STAGE_COLOR[row.stage] || "#aaa", background: "#f8f7f5", padding: "2px 6px", borderRadius: 3 }}>{row.stage}</span>
+                        ) : <span style={{ color: "#ddd" }}>—</span>}
+                      </td>
+                      {/* Source */}
+                      <td style={{ padding: "8px 12px" }}>
+                        {srcFile ? (
+                          <button onClick={() => openDocViewer(srcFile.filename, row.img_ref?.pageNum || 1, row.text)}
+                            style={{ fontSize: 9, fontFamily: "monospace", color: "#2980b9", background: "none", border: "1px solid #c5dff0", borderRadius: 3, padding: "2px 8px", cursor: "pointer" }}>
+                            {row.source}{row.img_ref?.pageNum > 1 ? ` стор.${row.img_ref.pageNum}` : ""}
+                          </button>
+                        ) : row.source && row.source !== "—" ? (
+                          <span onClick={() => openDocByLabel(row.source, row.text)}
+                            style={{ fontSize: 9, fontFamily: "monospace", color: "#e67e22", cursor: "pointer", textDecoration: "underline dotted" }} title="Спробувати знайти документ">
+                            {row.source}
+                          </span>
+                        ) : (
+                          <span style={{ fontSize: 9, fontFamily: "monospace", color: "#ccc" }}>—</span>
+                        )}
+                      </td>
+                    </tr>
+                  );
+                })}
+                {filteredRows.length === 0 && (
+                  <tr><td colSpan={6} style={{ padding: "32px", textAlign: "center", fontSize: 11, color: "#bbb", fontFamily: "monospace" }}>Нічого не знайдено</td></tr>
+                )}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
+
+      <div style={{ display: "flex", flex: 1, overflow: "hidden", display: viewMode === "table" ? "none" : "flex" }}>
         {/* Ліва панель */}
         <div style={{ width: 190, background: "#fff", borderRight: "1px solid #ece9e4", flexShrink: 0, overflowY: "auto", display: "flex", flexDirection: "column" }}>
           {/* Annotation */}
@@ -1006,9 +1558,10 @@ function TzReviewStep({ projectType, rooms, tzByRoom, sowMissing, sowUnclear, cl
             </div>
           )}
           {/* View toggle */}
-          <div style={{ display: "flex", padding: "8px 14px", gap: 4, borderBottom: "1px solid #f0eeea" }}>
+          <div style={{ display: "flex", padding: "8px 14px", gap: 4, borderBottom: "1px solid #f0eeea", flexWrap: "wrap" }}>
             <button onClick={() => setViewMode("rooms")} style={{ flex: 1, fontSize: 8, fontFamily: "monospace", padding: "4px 0", border: "none", borderRadius: 3, cursor: "pointer", background: viewMode === "rooms" ? "#1a1a1a" : "#f0eeea", color: viewMode === "rooms" ? "#fff" : "#888", fontWeight: viewMode === "rooms" ? 700 : 400 }}>КІМНАТИ</button>
             <button onClick={() => setViewMode("stages")} style={{ flex: 1, fontSize: 8, fontFamily: "monospace", padding: "4px 0", border: "none", borderRadius: 3, cursor: "pointer", background: viewMode === "stages" ? "#1a1a1a" : "#f0eeea", color: viewMode === "stages" ? "#fff" : "#888", fontWeight: viewMode === "stages" ? 700 : 400 }}>СТАДІЇ</button>
+            <button onClick={() => setViewMode("table")} style={{ flex: 1, fontSize: 8, fontFamily: "monospace", padding: "4px 0", border: "none", borderRadius: 3, cursor: "pointer", background: viewMode === "table" ? "#2980b9" : "#f0eeea", color: viewMode === "table" ? "#fff" : "#888", fontWeight: viewMode === "table" ? 700 : 400 }}>ТАБЛИЦЯ</button>
           </div>
 
           <div style={{ flex: 1, overflowY: "auto", padding: "8px 0" }}>
@@ -1036,6 +1589,34 @@ function TzReviewStep({ projectType, rooms, tzByRoom, sowMissing, sowUnclear, cl
                     style={{ padding: "7px 14px", cursor: "pointer", display: "flex", justifyContent: "space-between", alignItems: "center", background: activeRoom === "__sow__" ? "#fff9f0" : "transparent", borderLeft: `3px solid ${activeRoom === "__sow__" ? "#e67e22" : "transparent"}`, marginTop: 4 }}>
                     <span style={{ fontSize: 11, color: "#e67e22" }}>⚠ SOW</span>
                     <span style={{ fontSize: 9, fontFamily: "monospace", color: "#e67e22" }}>{(sowMissing?.length || 0) + (sowUnclear?.length || 0)}</span>
+                  </div>
+                )}
+                {conflicts?.length > 0 && (
+                  <div onClick={() => setActiveRoom("__conflicts__")}
+                    style={{ padding: "7px 14px", cursor: "pointer", display: "flex", justifyContent: "space-between", alignItems: "center", background: activeRoom === "__conflicts__" ? "#fff5f5" : "transparent", borderLeft: `3px solid ${activeRoom === "__conflicts__" ? "#e74c3c" : "transparent"}`, marginTop: 4 }}>
+                    <span style={{ fontSize: 11, color: "#e74c3c" }}>⚡ Конфлікти</span>
+                    <span style={{ fontSize: 9, fontFamily: "monospace", color: "#e74c3c" }}>{conflicts.length}</span>
+                  </div>
+                )}
+                {roadmap?.length > 0 && (
+                  <div onClick={() => setActiveRoom("__roadmap__")}
+                    style={{ padding: "7px 14px", cursor: "pointer", display: "flex", justifyContent: "space-between", alignItems: "center", background: activeRoom === "__roadmap__" ? "#f0fff4" : "transparent", borderLeft: `3px solid ${activeRoom === "__roadmap__" ? "#27ae60" : "transparent"}`, marginTop: 4 }}>
+                    <span style={{ fontSize: 11, color: "#27ae60" }}>▶ Роадмап</span>
+                    <span style={{ fontSize: 9, fontFamily: "monospace", color: "#27ae60" }}>{roadmap.length}</span>
+                  </div>
+                )}
+                {allItems.length > 0 && (
+                  <div onClick={() => setActiveRoom("__checklist__")}
+                    style={{ padding: "7px 14px", cursor: "pointer", display: "flex", justifyContent: "space-between", alignItems: "center", background: activeRoom === "__checklist__" ? "#f5f0ff" : "transparent", borderLeft: `3px solid ${activeRoom === "__checklist__" ? "#8e44ad" : "transparent"}`, marginTop: 4 }}>
+                    <span style={{ fontSize: 11, color: "#8e44ad" }}>✓ Чеклист</span>
+                    <span style={{ fontSize: 9, fontFamily: "monospace", color: "#8e44ad" }}>{allItems.length}</span>
+                  </div>
+                )}
+                {sources?.length > 0 && (
+                  <div onClick={() => setActiveRoom("__sources__")}
+                    style={{ padding: "7px 14px", cursor: "pointer", display: "flex", justifyContent: "space-between", alignItems: "center", background: activeRoom === "__sources__" ? "#f0f9ff" : "transparent", borderLeft: `3px solid ${activeRoom === "__sources__" ? "#2980b9" : "transparent"}`, marginTop: 4 }}>
+                    <span style={{ fontSize: 11, color: "#2980b9" }}>📋 Джерела</span>
+                    <span style={{ fontSize: 9, fontFamily: "monospace", color: "#2980b9" }}>{sources.length}</span>
                   </div>
                 )}
               </>
@@ -1079,7 +1660,7 @@ function TzReviewStep({ projectType, rooms, tzByRoom, sowMissing, sowUnclear, cl
                     : Object.entries(byRoom).map(([room, items]) => (
                         <div key={room} style={{ marginBottom: 20 }}>
                           <div style={{ fontSize: 9, fontWeight: 700, fontFamily: "monospace", color: "#aaa", letterSpacing: "0.1em", marginBottom: 6, borderBottom: "1px solid #ece9e4", paddingBottom: 4 }}>{room.toUpperCase()}</div>
-                          {items.map(item => <TzItem key={item.id} item={item} onEdit={onEdit} onRemove={onRemove} onOpenRef={(imgRef, itemText) => setLightbox({ imgRef, itemText })} />)}
+                          {items.map(item => <TzItem key={item.id} item={item} onEdit={onEdit} onRemove={onRemove} onOpenRef={(imgRef, itemText) => setLightbox({ imgRef, itemText })} onOpenDoc={(label, itemText) => openDocByLabel(label, itemText)} />)}
                         </div>
                       ))
                   }
@@ -1101,6 +1682,114 @@ function TzReviewStep({ projectType, rooms, tzByRoom, sowMissing, sowUnclear, cl
                   {sowUnclear.map((s, i) => <div key={i} style={{ fontSize: 12, color: "#444", padding: "5px 0 5px 12px", borderLeft: "3px solid #e67e22", marginBottom: 4 }}>{s}</div>)}
                 </div>
               )}
+            </div>
+          ) : activeRoom === "__sources__" ? (
+            <div style={{ maxWidth: 720 }}>
+              <div style={{ fontSize: 10, fontFamily: "monospace", color: "#bbb", letterSpacing: "0.1em", marginBottom: 4 }}>ДЖЕРЕЛА — ЩО ЗНАЙДЕНО В ФАЙЛАХ</div>
+              <div style={{ fontSize: 10, color: "#bbb", fontFamily: "monospace", marginBottom: 16 }}>Виберіть призначення кожного референсу</div>
+              {(sources || []).map((src, si) => (
+                <div key={si} style={{ marginBottom: 20 }}>
+                  <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 8, paddingBottom: 6, borderBottom: "1px solid #ece9e4" }}>
+                    <span style={{ fontSize: 13 }}>{SOURCE_FILE_ICO[src.fileType] || "📄"}</span>
+                    <span style={{ fontSize: 11, fontWeight: 700, color: "#1a1a1a" }}>{src.file}</span>
+                    {src.page > 1 && <span style={{ fontSize: 9, fontFamily: "monospace", color: "#bbb" }}>стор. {src.page}</span>}
+                  </div>
+                  {(src.found || []).map((item, ii) => {
+                    const currentTag = sourceTags?.[item.id] || item.type;
+                    const tagColor = SOURCE_TYPE_COLOR[currentTag] || "#bbb";
+                    return (
+                      <div key={ii} style={{ display: "flex", alignItems: "center", gap: 10, padding: "5px 0", borderBottom: "1px solid #f5f4f1" }}>
+                        <div style={{ width: 6, height: 6, borderRadius: "50%", background: tagColor, flexShrink: 0 }} />
+                        <span style={{ fontSize: 11, color: "#333", flex: 1, lineHeight: 1.4 }}>{item.description}</span>
+                        <select
+                          value={currentTag}
+                          onChange={e => onSourceTag(item.id, e.target.value)}
+                          style={{ fontSize: 9, fontFamily: "monospace", border: `1px solid ${tagColor}`, borderRadius: 4, color: tagColor, background: "#fff", padding: "2px 6px", cursor: "pointer", outline: "none" }}>
+                          {Object.entries(SOURCE_TYPE_LABELS).map(([val, label]) => (
+                            <option key={val} value={val}>{label}</option>
+                          ))}
+                        </select>
+                      </div>
+                    );
+                  })}
+                </div>
+              ))}
+            </div>
+          ) : activeRoom === "__checklist__" ? (
+            <div style={{ maxWidth: 720 }}>
+              <div style={{ fontSize: 10, fontFamily: "monospace", color: "#bbb", letterSpacing: "0.1em", marginBottom: 4 }}>ЧЕКЛИСТ ЗДАЧІ</div>
+              <div style={{ fontSize: 10, color: "#bbb", fontFamily: "monospace", marginBottom: 16 }}>Всі вимоги клієнта — для звірки результату перед здачею</div>
+              {PRODUCTION_STAGES.map(stage => {
+                const stageItems = allItems.filter(it => it.stage === stage);
+                if (!stageItems.length) return null;
+                return (
+                  <div key={stage} style={{ marginBottom: 18 }}>
+                    <div style={{ fontSize: 9, fontWeight: 700, fontFamily: "monospace", color: STAGE_COLOR[stage], letterSpacing: "0.1em", marginBottom: 8, borderBottom: `1px solid ${STAGE_COLOR[stage]}33`, paddingBottom: 4 }}>{stage.toUpperCase()}</div>
+                    {stageItems.map((item) => (
+                      <div key={item.id} style={{ display: "flex", alignItems: "flex-start", gap: 10, padding: "5px 0", borderBottom: "1px solid #f2f0ec" }}>
+                        <div style={{ width: 14, height: 14, borderRadius: 3, border: `1.5px solid #ccc`, flexShrink: 0, marginTop: 2 }} />
+                        <div style={{ flex: 1, minWidth: 0 }}>
+                          <div style={{ fontSize: 11, color: "#222", lineHeight: 1.5 }}>{item.text}</div>
+                          <div style={{ display: "flex", gap: 6, marginTop: 3, flexWrap: "wrap" }}>
+                            <span style={{ fontSize: 8, fontFamily: "monospace", color: "#bbb" }}>{item.room}</span>
+                            <span style={{ fontSize: 8, fontFamily: "monospace", color: "#ddd" }}>·</span>
+                            <span style={{ fontSize: 8, fontFamily: "monospace", color: "#bbb" }}>{item.category}</span>
+                            {(item.links || []).map((lk, li) => (
+                              <a key={li} href={lk.url} target="_blank" rel="noreferrer"
+                                style={{ fontSize: 8, color: "#3498db", fontFamily: "monospace", textDecoration: "none" }}>
+                                🔗 {lk.label || lk.type}
+                              </a>
+                            ))}
+                          </div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                );
+              })}
+              {allItems.filter(it => !it.stage).length > 0 && (
+                <div style={{ marginBottom: 18 }}>
+                  <div style={{ fontSize: 9, fontWeight: 700, fontFamily: "monospace", color: "#bbb", letterSpacing: "0.1em", marginBottom: 8, borderBottom: "1px solid #eee", paddingBottom: 4 }}>БЕЗ СТАДІЇ</div>
+                  {allItems.filter(it => !it.stage).map(item => (
+                    <div key={item.id} style={{ display: "flex", alignItems: "flex-start", gap: 10, padding: "5px 0", borderBottom: "1px solid #f2f0ec" }}>
+                      <div style={{ width: 14, height: 14, borderRadius: 3, border: "1.5px solid #ccc", flexShrink: 0, marginTop: 2 }} />
+                      <div style={{ fontSize: 11, color: "#222", lineHeight: 1.5 }}>{item.text}</div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          ) : activeRoom === "__conflicts__" ? (
+            <div style={{ maxWidth: 720 }}>
+              <div style={{ fontSize: 10, fontFamily: "monospace", color: "#bbb", letterSpacing: "0.1em", marginBottom: 12 }}>КОНФЛІКТИ МІЖ ФАЙЛАМИ</div>
+              {(conflicts || []).map((c, i) => (
+                <div key={i} style={{ marginBottom: 10, padding: "10px 14px", background: "#fff5f5", border: "1px solid #f5c6c6", borderLeft: "3px solid #e74c3c", borderRadius: 6 }}>
+                  <div style={{ fontSize: 12, color: "#333", lineHeight: 1.6 }}>{c}</div>
+                </div>
+              ))}
+            </div>
+          ) : activeRoom === "__roadmap__" ? (
+            <div style={{ maxWidth: 720 }}>
+              <div style={{ fontSize: 10, fontFamily: "monospace", color: "#bbb", letterSpacing: "0.1em", marginBottom: 16 }}>РОАДМАП ПРОЕКТУ</div>
+              {(roadmap || []).sort((a, b) => (a.order || 0) - (b.order || 0)).map((step, i) => (
+                <div key={i} style={{ marginBottom: 20 }}>
+                  <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 6 }}>
+                    <div style={{ width: 22, height: 22, borderRadius: "50%", background: STAGE_COLOR[step.stage] || "#888", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 9, color: "#fff", fontFamily: "monospace", fontWeight: 700, flexShrink: 0 }}>{step.order || i + 1}</div>
+                    <span style={{ fontSize: 13, fontWeight: 700, color: STAGE_COLOR[step.stage] || "#333" }}>{step.stage}</span>
+                  </div>
+                  {step.notes && (
+                    <div style={{ fontSize: 11, color: "#888", fontStyle: "italic", marginBottom: 8, paddingLeft: 32, lineHeight: 1.5 }}>{step.notes}</div>
+                  )}
+                  <div style={{ paddingLeft: 32 }}>
+                    {(step.tasks || []).map((task, j) => (
+                      <div key={j} style={{ display: "flex", gap: 8, alignItems: "flex-start", padding: "4px 0", borderBottom: "1px solid #f0eeea" }}>
+                        <span style={{ fontSize: 10, color: STAGE_COLOR[step.stage] || "#888", fontFamily: "monospace", marginTop: 2, flexShrink: 0 }}>→</span>
+                        <span style={{ fontSize: 12, color: "#333", lineHeight: 1.5 }}>{task}</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              ))}
             </div>
           ) : activeRoom === "__comments__" ? (
             <div style={{ maxWidth: 720 }}>
@@ -1125,7 +1814,7 @@ function TzReviewStep({ projectType, rooms, tzByRoom, sowMissing, sowUnclear, cl
                         <span style={{ fontSize: 9, color: "#ccc", fontFamily: "monospace" }}>{items.length}</span>
                       </div>
                       <div style={{ paddingLeft: 14 }}>
-                        {items.map(item => <TzItem key={item.id} item={item} onEdit={onEdit} onRemove={onRemove} onOpenRef={(imgRef, itemText) => setLightbox({ imgRef, itemText })} />)}
+                        {items.map(item => <TzItem key={item.id} item={item} onEdit={onEdit} onRemove={onRemove} onOpenRef={(imgRef, itemText) => setLightbox({ imgRef, itemText })} onOpenDoc={(label, itemText) => openDocByLabel(label, itemText)} />)}
                       </div>
                     </div>
                   ))
@@ -1140,6 +1829,17 @@ function TzReviewStep({ projectType, rooms, tzByRoom, sowMissing, sowUnclear, cl
 
 // ─── Session ─────────────────────────────────────────────────────────────────
 const SESSION_KEY = "tz_tool_session";
+// Strip imgRef (contains base64) before persisting — only keep imgRefLabel string
+function stripImgRefs(byRoom) {
+  const out = {};
+  Object.entries(byRoom || {}).forEach(([room, cats]) => {
+    out[room] = {};
+    Object.entries(cats || {}).forEach(([cat, items]) => {
+      out[room][cat] = (items || []).map(({ imgRef, ...rest }) => rest);
+    });
+  });
+  return out;
+}
 function saveSession(data) { try { localStorage.setItem(SESSION_KEY, JSON.stringify(data)); } catch { /* ignore */ } }
 function loadSession() { try { const s = localStorage.getItem(SESSION_KEY); return s ? JSON.parse(s) : null; } catch { return null; } }
 
@@ -1158,10 +1858,104 @@ export default function App() {
   const [tzClientComments, setTzClientComments] = useState([]);
   const [tzSowMissing, setTzSowMissing] = useState([]);
   const [tzSowUnclear, setTzSowUnclear] = useState([]);
+  const [tzConflicts, setTzConflicts] = useState([]);
+  const [tzRoadmap, setTzRoadmap] = useState([]);
+  const [tzSources, setTzSources] = useState([]);
+  const [tzSourceTags, setTzSourceTags] = useState({}); // { srcId: "furniture" | ... }
+  const [tavilyKey, setTavilyKey] = useState(() => { try { return localStorage.getItem("tavily_api_key") || ""; } catch { return ""; } });
+  const [searchingLinks, setSearchingLinks] = useState(false);
+  const [linkSearchProgress, setLinkSearchProgress] = useState({ done: 0, total: 0 });
 
   const allFilesList = useFileList();
 
   const saveKey = k => { setApiKey(k); try { localStorage.setItem("anthropic_api_key", k); } catch { /* ignore */ } };
+  const saveTavilyKey = k => { setTavilyKey(k); try { localStorage.setItem("tavily_api_key", k); } catch { /* ignore */ } };
+
+  async function searchLinksWithTavily(byRoomOverride) {
+    if (!tavilyKey.trim()) return;
+    const SEARCH_CATS = ["Меблі та моделі", "Матеріали та текстури", "Логотип / написи"];
+    const source = byRoomOverride || tzByRoom;
+    const items = Object.values(source).flatMap(cats => Object.entries(cats)
+      .filter(([cat]) => SEARCH_CATS.includes(cat))
+      .flatMap(([, items]) => items)
+    ).filter(it => !it.links?.length && it.text?.length > 8);
+
+    if (!items.length) return;
+    setSearchingLinks(true);
+    setLinkSearchProgress({ done: 0, total: items.length });
+
+    const getSearchQuery = async (item) => {
+      // If item has an image reference — use Claude Haiku to identify product from image
+      if (item.imgRef?.full || item.imgRef?.preview) {
+        try {
+          const imgData = (item.imgRef.full || item.imgRef.preview).split(",")[1];
+          const mediaType = item.imgRef.full?.startsWith("data:image/png") ? "image/png" : "image/jpeg";
+          const resp = await fetch("https://api.anthropic.com/v1/messages", {
+            method: "POST",
+            headers: { "Content-Type": "application/json", "anthropic-version": "2023-06-01", "anthropic-dangerous-direct-browser-access": "true", "x-api-key": apiKey },
+            body: JSON.stringify({
+              model: "claude-haiku-4-5-20251001",
+              max_tokens: 40,
+              messages: [{ role: "user", content: [
+                { type: "image", source: { type: "base64", media_type: mediaType, data: imgData } },
+                { type: "text", text: `Context: "${item.text}". Identify the specific product. Return ONLY a short search query: brand + model + type, max 7 words, in English. Example: "Minotti Lawrence sofa" or "Flos Aim pendant light"` }
+              ]}]
+            })
+          });
+          if (resp.ok) {
+            const data = await resp.json();
+            const q = data.content?.[0]?.text?.trim();
+            if (q && q.length > 3) return q;
+          }
+        } catch { /* fallback to text */ }
+      }
+      // No image — extract key terms from text (brand + product, skip generic descriptors)
+      const text = item.text;
+      const brandMatch = text.match(/[A-Z][a-zA-Z]+(?:\s+[A-Z][a-zA-Z]+)*/g);
+      const brandQuery = brandMatch?.slice(0, 3).join(" ");
+      const catKeyword = {
+        "Меблі та моделі": "furniture",
+        "Матеріали та текстури": "material",
+        "Логотип / написи": "logo brand",
+      }[item.category] || "";
+      return [brandQuery || text.slice(0, 60), catKeyword].filter(Boolean).join(" ");
+    };
+
+    let done = 0;
+    await Promise.all(items.map(async item => {
+      try {
+        const query = await getSearchQuery(item);
+        const resp = await fetch("https://api.tavily.com/search", {
+          method: "POST",
+          headers: { "Content-Type": "application/json", "Authorization": `Bearer ${tavilyKey}` },
+          body: JSON.stringify({ query, search_depth: "basic", max_results: 3 }),
+        });
+        if (resp.ok) {
+          const data = await resp.json();
+          const links = (data.results || []).slice(0, 3).map(r => ({
+            url: r.url,
+            label: r.title?.slice(0, 50) || r.url.replace(/^https?:\/\//, "").slice(0, 40),
+            type: "product",
+            query,
+          }));
+          if (links.length) {
+            setTzByRoom(prev => {
+              const next = {};
+              Object.entries(prev).forEach(([room, cats]) => {
+                next[room] = {};
+                Object.entries(cats).forEach(([cat, catItems]) => {
+                  next[room][cat] = catItems.map(it => it.id === item.id ? { ...it, links } : it);
+                });
+              });
+              return next;
+            });
+          }
+        }
+      } catch { /* skip */ }
+      setLinkSearchProgress({ done: ++done, total: items.length });
+    }));
+    setSearchingLinks(false);
+  }
 
   const readyFiles = fl => (fl.files || []).filter(f => !f._loading && !f._error && f._done);
 
@@ -1192,18 +1986,34 @@ export default function App() {
     return idx;
   };
 
-  // Resolve img_ref label from Claude against the index with fuzzy fallback
-  const resolveImgRef = (label, idx) => {
-    if (!label) return null;
-    // Normalize: strip [brackets], collapse spaces
+  // Resolve img_ref from Claude against the index
+  // New format: { file: "СТИЛЬ / МУДБОРД 1", page: 2 }
+  // Legacy fallback: plain string "СТИЛЬ / МУДБОРД 1 стор.2"
+  const resolveImgRef = (imgRef, idx) => {
+    if (!imgRef) return null;
     const norm = s => s.replace(/\[.*?\]/g, '').replace(/\s+/g, ' ').trim().toLowerCase();
-    const key = norm(label);
+
+    let fileKey, page;
+    if (typeof imgRef === 'object' && imgRef.file) {
+      fileKey = norm(imgRef.file);
+      page = imgRef.page || 1;
+    } else {
+      // Legacy: parse "FILE стор.N" string
+      const s = norm(String(imgRef));
+      const m = s.match(/^(.*?)\s+стор\.(\d+)$/);
+      fileKey = m ? m[1] : s;
+      page = m ? parseInt(m[2]) : 1;
+    }
+
+    // Build exact key
+    const key = page > 1 ? `${fileKey} стор.${page}` : fileKey;
     if (idx[key]) return idx[key];
-    // Without trailing " 1", " 2", etc. (Claude may omit the counter)
-    const noNum = key.replace(/\s+\d+(\s+стор\.\d+)?$/, '$1').replace(/^\s+|\s+$/g, '');
-    if (idx[noNum]) return idx[noNum];
-    // Partial prefix match
-    const found = Object.keys(idx).find(k => k.startsWith(noNum) || noNum.startsWith(k));
+
+    // Fuzzy: find index entry whose file part matches fileKey
+    const found = Object.keys(idx).find(k => {
+      const kFile = k.replace(/\s+стор\.\d+$/, '');
+      return kFile === fileKey || kFile.startsWith(fileKey) || fileKey.startsWith(kFile);
+    });
     return found ? idx[found] : null;
   };
 
@@ -1242,15 +2052,29 @@ export default function App() {
     const imgIndex = buildImgIndex();
 
     const sowTypes = Object.keys(SOW_TEMPLATES).join(" | ");
-    const parts = [{ type: "text", text: `Ти — AI-асистент для структурування ТЗ на 3D-візуалізацію.
+    const parts = [{ type: "text", text: `Ти — досвідчений 3D-художник і ПМ, який аналізує вхідні матеріали ПЕРЕД стартом проекту. Твоя ціль — не просто витягнути вимоги, а підготувати повний роадмап і чеклист здачі: щоб команда (візуалізатор + АД + ПМ) могла звірити результат з тим що просив клієнт.
 
-ВАЖЛИВО: для кожної сторінки надано "витягнутий текст" — це точний машинний текст зі сторінки. Використовуй його як першочергове джерело для розмірів, назв матеріалів, специфікацій та будь-яких чисел. Зображення доповнює текст — не навпаки.
+МОВА: вхідні матеріали можуть бути будь-якою мовою — українська, російська, суржик, англійська, змішана. Розпізнавай вимоги незалежно від мови. Відповідай завжди ТІЛЬКИ українською.
+
+ПРИНЦИП РОБОТИ:
+1. Читай ВСІ файли разом, не по черзі — зіставляй бриф з кресленнями, референси з коментарями, специфікації між собою
+2. Думай як художник: "що мені треба зробити щоб запустити цей проект і не переробляти?"
+3. Витягуй ВСІ посилання (URL) з будь-яких джерел — меблі, каталоги, Pinterest, Behance, бренди, кольори, мапи — і прив'язуй до конкретної вимоги
+4. Фіксуй суперечності між файлами — якщо бриф суперечить кресленню або референс не відповідає текстовому опису
+
+DWG/DXF КРЕСЛЕННЯ: якщо є DWG або DXF — обов'язково:
+- Витягни назви приміщень з "ПІДПИСИ" та "ШАРИ" — вони формують список rooms
+- Витягни розміри — додавай у "Креслення та планування" з img_ref на цей файл
+- Зіставляй з брифом: розбіжності → conflicts та sow_unclear
+- Приміщення на кресленні без вимог → sow_missing
 
 ВХІДНІ ФАЙЛИ:
 ${manifest || "(немає файлів)"}
 
 ТЗ ТЕКСТ:
 ${briefText.trim() || "(дивись прикріплені матеріали)"}
+
+ВАЖЛИВО: для кожної сторінки надано "витягнутий текст" — використовуй його як першочергове джерело для розмірів, назв, специфікацій та чисел. Зображення доповнює текст.
 
 ЗАВДАННЯ 1 — project_type:
 Один варіант: ${sowTypes}
@@ -1263,40 +2087,69 @@ ${briefText.trim() || "(дивись прикріплені матеріали)"
 
 ЗАВДАННЯ 4 — tz_by_room:
 КРИТИЧНО: знайди ВСІ вимоги, розбий по приміщеннях та категоріях.
-Структура: { "Приміщення": { "Категорія": [ {id, text, quote, stage, source, img_ref, link} ] } }
+Структура: { "Приміщення": { "Категорія": [ {id, text, quote, stage, source, img_ref, links} ] } }
 - text = ПОВНИЙ опис: назва + матеріал + колір + відділка + розмір + марка
-- quote = дослівна цитата з вхідних матеріалів (copy-paste речення або фрази), або null якщо не процитовано
-- stage = виробнича стадія: "Моделінг" | "Текстуринг" | "Світло" | "Камери" | "Пост-продакшн" | "Видача"
-- img_ref: мітка файлу (напр. "СТИЛЬ / МУДБОРД 1 стор.2") або null
+- АТОМАРНІСТЬ: один item = одна вимога. Якщо речення містить кілька об'єктів ("диван + крісло + стіл") — розбивай на окремі items
+- quote = дослівна цитата з вхідних матеріалів, або null
+- stage = "Моделінг" | "Текстуринг" | "Світло" | "Камери" | "Пост-продакшн" | "Видача"
+- img_ref: { "file": "мітка файлу", "page": N } або null  (напр. {"file":"СТИЛЬ / МУДБОРД 1","page":2}; page=1 якщо перша сторінка)
 - source: назва категорії вхідного файлу
+- links: масив всіх URL пов'язаних з цією вимогою — [ { url, label, type } ] де type: "furniture"|"material"|"reference"|"color"|"catalog"|"product"|"map"|"other". Якщо посилань немає — []
 - Категорії: "Матеріали та текстури", "Меблі та моделі", "Сезон / атмосфера", "Тип освітлення", "Креслення та планування", "Логотип / написи", "Вимоги клієнта", "Специфічні запити"
 
-ЗАВДАННЯ 5 — sow_missing та sow_unclear:
-Порівняй з SOW-шаблоном для визначеного типу проекту.
-- sow_missing: що повністю відсутнє. Формат кожного рядка: "Назва пункту — що саме потрібно надати клієнту"
-  Приклад: "Час доби — вкажіть ранок/день/вечір/ніч для кожного з ракурсів"
-- sow_unclear: що є але неповно або суперечливо. Формат кожного рядка: "Назва пункту — знайдено: [що саме є в матеріалах]. Неясно: [конкретне питання до клієнта]"
-  Приклад: "Camera change — знайдено: 'змінити камеру в спальні'. Неясно: не вказано новий ракурс — потрібен кут огляду, висота камери або референс"
-  Приклад: "Колір стін — знайдено: 'замінити зелений колір'. Неясно: не вказано на який саме колір — потрібен RAL/HEX або візуальний референс"
+ЗАВДАННЯ 5 — conflicts:
+Суперечності між вхідними файлами. Кожен рядок: "Конфлікт: [що суперечить чому]. Джерело A: [файл/цитата]. Джерело B: [файл/цитата]. Питання: [що треба уточнити]"
+Приклад: "Конфлікт: колір стін вітальні. Джерело A: бриф — 'стіни темно-сірі'. Джерело B: мудборд стор.2 — референс зі світлими стінами. Питання: який варіант пріоритетний?"
 
-ЗАВДАННЯ 6 — client_comments:
+ЗАВДАННЯ 6 — roadmap:
+Впорядкований план роботи по виробничих стадіях. Для кожної стадії — конкретні задачі в порядку виконання з урахуванням залежностей між ними.
+Структура: [ { stage, order, notes, tasks: ["задача 1", "задача 2"] } ]
+- stage = одна з: "Моделінг" | "Текстуринг" | "Світло" | "Камери" | "Пост-продакшн" | "Видача"
+- order = порядковий номер (1, 2, 3...)
+- notes = важливий коментар для цієї стадії (залежності, ризики, що треба уточнити до початку)
+- tasks = конкретні дії для виконання
+
+ЗАВДАННЯ 7 — sow_missing та sow_unclear:
+Порівняй з SOW-шаблоном для визначеного типу проекту.
+- sow_missing: що повністю відсутнє. Формат: "Назва пункту — що саме потрібно надати клієнту"
+- sow_unclear: що є але неповно. Формат: "Назва пункту — знайдено: [що є]. Неясно: [конкретне питання]"
+
+ЗАВДАННЯ 8 — sources:
+Посторінковий журнал джерел — що знайдено в кожному файлі/сторінці.
+Структура: [ { file: "мітка файлу", page: N, found: [ { id, type, description } ] } ]
+- file: мітка файлу (напр. "МУДБОРД 1", "КРЕСЛЕННЯ", "ТЗ ТЕКСТОМ")
+- page: номер сторінки (1 якщо одна)
+- found: список знайденого на цій сторінці
+- type: "furniture" | "material" | "lighting" | "style_ref" | "time_of_day" | "weather" | "render_quality" | "camera" | "dimensions" | "logo" | "comment" | "other"
+- description: коротко що саме (назва продукту, бренд, опис)
+Включай ВСЕ що є на сторінці — меблі, матеріали, референси стилю, час доби, погоду, якість рендеру, ракурси, розміри.
+
+ЗАВДАННЯ 9 — client_comments:
 ВСІ коментарі клієнта — в рамках, нотатках, стрілках.
 { page: "мітка файлу", text: "дослівно" }
 
 ВІДПОВІДАЙ ТІЛЬКИ JSON:
-{"project_type":"...","project_annotation":"...","rooms":["Загальне","Вітальня"],"tz_by_room":{"Загальне":{"Тип освітлення":[{"id":"tz1","text":"Тепле освітлення 2700K, торшер біля дивану","quote":"тепле освітлення, торшер біля дивану","stage":"Світло","source":"ТЗ ТЕКСТОМ","img_ref":null,"link":null}]},"Вітальня":{"Матеріали та текстури":[{"id":"tz2","text":"Підлога — дубовий паркет, відтінок натуральний, матовий лак","quote":"дубовий паркет натуральний матовий","stage":"Текстуринг","source":"МАТЕРІАЛИ 1","img_ref":"МАТЕРІАЛИ 1 стор.2","link":null}]}},"sow_missing":["Час доби — вкажіть ранок/день/вечір для кожного ракурсу"],"sow_unclear":["Camera change — знайдено: 'змінити камеру'. Неясно: не вказано новий ракурс"],"client_comments":[{"page":"ТЗ ТЕКСТОМ 1","text":"..."}]}` }];
+{"project_type":"...","project_annotation":"...","rooms":["Загальне","Вітальня"],"tz_by_room":{"Загальне":{"Тип освітлення":[{"id":"tz1","text":"Тепле освітлення 2700K, торшер біля дивану","quote":"тепле освітлення, торшер біля дивану","stage":"Світло","source":"ТЗ ТЕКСТОМ","img_ref":null,"links":[]}]},"Вітальня":{"Меблі та моделі":[{"id":"tz2","text":"Диван — Minotti Lawrence, сірий велюр","quote":"диван Minotti Lawrence сірий","stage":"Моделінг","source":"МАТЕРІАЛИ 1","img_ref":{"file":"МАТЕРІАЛИ 1","page":2},"links":[{"url":"https://minotti.com/...","label":"Minotti Lawrence","type":"furniture"}]}]}},"conflicts":["Конфлікт: колір стін вітальні. Джерело A: бриф — 'темно-сірі стіни'. Джерело B: мудборд стор.2 — світлий інтер'єр. Питання: який варіант пріоритетний?"],"roadmap":[{"stage":"Моделінг","order":1,"notes":"Перед стартом уточнити план у клієнта — є розбіжність між кресленням і брифом","tasks":["Змоделювати планування за DWG","Базові меблі по референсах"]}],"sources":[{"file":"МУДБОРД 1","page":2,"found":[{"id":"src1","type":"furniture","description":"Диван Minotti Lawrence, сірий велюр"},{"id":"src2","type":"style_ref","description":"Скандинавський стиль, натуральні матеріали"},{"id":"src3","type":"lighting","description":"Торшер Flos IC F підлоговий"}]},{"file":"КРЕСЛЕННЯ","page":1,"found":[{"id":"src4","type":"dimensions","description":"Вітальня 6×4м, спальня 4×3.5м"},{"id":"src5","type":"camera","description":"Ракурс з кута вітальні на зону відпочинку"}]}],"sow_missing":["Час доби — вкажіть ранок/день/вечір для кожного ракурсу"],"sow_unclear":["Колір стін — знайдено: 'замінити зелений'. Неясно: на який колір — потрібен RAL/HEX"],"client_comments":[{"page":"ТЗ ТЕКСТОМ 1","text":"..."}]}` }];
 
     parts.push(...filesToParts(labeledFiles, "ФАЙЛ"));
 
     try {
       const result = await callAPI(parts, 2, apiKey);
+
+      // Validate top-level structure
+      if (!result || typeof result !== 'object') throw new Error("Відповідь не є об'єктом");
+      if (!result.tz_by_room || typeof result.tz_by_room !== 'object' || Array.isArray(result.tz_by_room))
+        throw new Error("tz_by_room відсутній або має невірний тип");
+
       let counter = 1;
       // Normalize tz_by_room: attach imgPreview and ensure ids
       const byRoom = {};
       Object.entries(result.tz_by_room || {}).forEach(([room, cats]) => {
         byRoom[room] = {};
-        Object.entries(cats || {}).forEach(([cat, items]) => {
-          byRoom[room][cat] = (items || []).map(item => ({
+        const catsObj = Array.isArray(cats) ? {} : (cats || {});
+        Object.entries(catsObj).forEach(([cat, items]) => {
+          const safeItems = Array.isArray(items) ? items : [];
+          byRoom[room][cat] = safeItems.map(item => ({
             id: item.id || `tz${counter++}`,
             category: cat,
             room,
@@ -1305,8 +2158,12 @@ ${briefText.trim() || "(дивись прикріплені матеріали)"
             stage: PRODUCTION_STAGES.includes(item.stage) ? item.stage : null,
             source: item.source || "",
             imgRef: item.img_ref ? resolveImgRef(item.img_ref, imgIndex) : null,
-            imgRefLabel: item.img_ref || null,
-            link: item.link || null,
+            imgRefLabel: item.img_ref
+              ? (typeof item.img_ref === 'object' && item.img_ref.file
+                  ? `${item.img_ref.file}${item.img_ref.page > 1 ? ` стор.${item.img_ref.page}` : ''}`
+                  : String(item.img_ref))
+              : null,
+            links: Array.isArray(item.links) ? item.links : (item.link ? [{ url: item.link, label: item.link, type: "other" }] : []),
           }));
         });
       });
@@ -1318,8 +2175,13 @@ ${briefText.trim() || "(дивись прикріплені матеріали)"
       setTzClientComments(result.client_comments || []);
       setTzSowMissing(result.sow_missing || []);
       setTzSowUnclear(result.sow_unclear || []);
-      saveSession({ savedAt: new Date().toISOString(), projectType: result.project_type || "", rooms, tzByRoom: byRoom, tzAnnotation: result.project_annotation || "", clientComments: result.client_comments || [], sowMissing: result.sow_missing || [], sowUnclear: result.sow_unclear || [] });
+      setTzConflicts(result.conflicts || []);
+      setTzRoadmap(result.roadmap || []);
+      setTzSources(result.sources || []);
+      setTzSourceTags({});
+      saveSession({ savedAt: new Date().toISOString(), projectType: result.project_type || "", rooms, tzByRoom: stripImgRefs(byRoom), tzAnnotation: result.project_annotation || "", clientComments: result.client_comments || [], sowMissing: result.sow_missing || [], sowUnclear: result.sow_unclear || [], conflicts: result.conflicts || [], roadmap: result.roadmap || [], sources: result.sources || [] });
       setStage("review");
+      if (tavilyKey.trim()) searchLinksWithTavily(byRoom);
     } catch (e) {
       setErr(`Помилка: ${e.message}`);
     }
@@ -1357,9 +2219,18 @@ ${briefText.trim() || "(дивись прикріплені матеріали)"
         clientComments={tzClientComments}
         sowMissing={tzSowMissing}
         sowUnclear={tzSowUnclear}
+        conflicts={tzConflicts}
+        roadmap={tzRoadmap}
+        sources={tzSources}
+        files={readyFiles(allFilesList)}
+        sourceTags={tzSourceTags}
+        onSourceTag={(id, tag) => setTzSourceTags(prev => ({ ...prev, [id]: tag }))}
         onEdit={handleEditItem}
         onRemove={handleRemoveItem}
         onBack={() => setStage("upload")}
+        onSearchLinks={tavilyKey ? searchLinksWithTavily : null}
+        searchingLinks={searchingLinks}
+        linkSearchProgress={linkSearchProgress}
       />
     );
   }
@@ -1413,17 +2284,29 @@ ${briefText.trim() || "(дивись прикріплені матеріали)"
       {/* Header */}
       <div style={{ background: "#1a1a1a", padding: "10px 24px", display: "flex", alignItems: "center", gap: 12 }}>
         <span style={{ fontSize: 11, fontWeight: 700, color: "#f2f0ec", fontFamily: "monospace", letterSpacing: "0.1em" }}>ТЗ TOOL</span>
-        <span style={{ fontSize: 9, color: "#666", fontFamily: "monospace" }}>v0.1 — розбір ТЗ для 3D-візуалізації</span>
-        <div style={{ marginLeft: "auto", display: "flex", alignItems: "center", gap: 8 }}>
-          <span style={{ fontSize: 9, color: "#555", fontFamily: "monospace" }}>API KEY</span>
-          <input
-            value={apiKey}
-            onChange={e => saveKey(e.target.value)}
-            type="password"
-            placeholder="sk-ant-..."
-            style={{ background: "#2a2a2a", border: "1px solid #333", color: "#aaa", fontSize: 10, fontFamily: "monospace", padding: "4px 8px", borderRadius: 4, width: 180, outline: "none" }}
-          />
-          <button onClick={() => saveKey("")} style={{ fontSize: 9, fontFamily: "monospace", background: "none", border: "none", color: "#444", cursor: "pointer", padding: "0 2px" }} title="Вийти / змінити ключ">×</button>
+        <span style={{ fontSize: 9, color: "#666", fontFamily: "monospace" }}>v0.2 — розбір ТЗ для 3D-візуалізації</span>
+        <div style={{ marginLeft: "auto", display: "flex", alignItems: "center", gap: 12 }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+            <span style={{ fontSize: 9, color: "#555", fontFamily: "monospace" }}>TAVILY</span>
+            <input
+              value={tavilyKey}
+              onChange={e => saveTavilyKey(e.target.value)}
+              type="password"
+              placeholder="tvly-..."
+              style={{ background: "#2a2a2a", border: `1px solid ${tavilyKey ? "#27ae60" : "#333"}`, color: "#aaa", fontSize: 10, fontFamily: "monospace", padding: "4px 8px", borderRadius: 4, width: 140, outline: "none" }}
+            />
+          </div>
+          <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+            <span style={{ fontSize: 9, color: "#555", fontFamily: "monospace" }}>ANTHROPIC</span>
+            <input
+              value={apiKey}
+              onChange={e => saveKey(e.target.value)}
+              type="password"
+              placeholder="sk-ant-..."
+              style={{ background: "#2a2a2a", border: "1px solid #333", color: "#aaa", fontSize: 10, fontFamily: "monospace", padding: "4px 8px", borderRadius: 4, width: 160, outline: "none" }}
+            />
+            <button onClick={() => saveKey("")} style={{ fontSize: 9, fontFamily: "monospace", background: "none", border: "none", color: "#444", cursor: "pointer", padding: "0 2px" }} title="Вийти / змінити ключ">×</button>
+          </div>
         </div>
       </div>
 
@@ -1484,8 +2367,23 @@ ${briefText.trim() || "(дивись прикріплені матеріали)"
           }
         </button>
 
+        {/* Return to active session */}
+        {tzRooms.length > 0 && (
+          <div style={{ marginTop: 16, padding: "10px 14px", background: "#f0f7ff", border: "1px solid #b3d4f5", borderRadius: 8, display: "flex", alignItems: "center", gap: 10 }}>
+            <span style={{ fontSize: 10, color: "#2980b9", fontFamily: "monospace", flex: 1 }}>
+              {tzProjectType || "Сесія"} · {tzRooms.length} кімн.
+            </span>
+            <button
+              onClick={() => setStage("review")}
+              style={{ fontSize: 10, fontFamily: "monospace", background: "#2980b9", border: "none", color: "#fff", padding: "4px 12px", borderRadius: 4, cursor: "pointer", fontWeight: 700 }}
+            >
+              Повернутися →
+            </button>
+          </div>
+        )}
+
         {/* Last session */}
-        {lastSession && (
+        {lastSession && tzRooms.length === 0 && (
           <div style={{ marginTop: 16, padding: "10px 14px", background: "#fff", border: "1px solid #e8e6e1", borderRadius: 8, display: "flex", alignItems: "center", gap: 10 }}>
             <span style={{ fontSize: 10, color: "#888", fontFamily: "monospace", flex: 1 }}>
               Остання сесія: {new Date(lastSession.savedAt).toLocaleString()}
@@ -1499,6 +2397,10 @@ ${briefText.trim() || "(дивись прикріплені матеріали)"
                 setTzClientComments(lastSession.clientComments || []);
                 setTzSowMissing(lastSession.sowMissing || []);
                 setTzSowUnclear(lastSession.sowUnclear || []);
+                setTzConflicts(lastSession.conflicts || []);
+                setTzRoadmap(lastSession.roadmap || []);
+                setTzSources(lastSession.sources || []);
+                setTzSourceTags({});
                 setStage("review");
               }}
               style={{ fontSize: 10, fontFamily: "monospace", background: "transparent", border: "1px solid #ddd", color: "#555", padding: "4px 10px", borderRadius: 4, cursor: "pointer" }}

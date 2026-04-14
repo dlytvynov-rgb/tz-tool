@@ -1,4 +1,4 @@
-import { useState, useRef, useCallback, useMemo } from "react";
+import { useState, useRef, useCallback, useMemo, useEffect } from "react";
 
 // ─── SheetJS (Excel) ──────────────────────────────────────────────────────────
 async function loadXLSX() {
@@ -421,6 +421,20 @@ function parseDXF(text) {
   return out || "[DXF порожній]";
 }
 
+// ─── JSZip loader ─────────────────────────────────────────────────────────────
+async function loadJSZip() {
+  if (window.JSZip) return window.JSZip;
+  await new Promise((res, rej) => {
+    const s = document.createElement("script");
+    s.src = "https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js";
+    s.onload = res; s.onerror = rej; document.head.appendChild(s);
+  });
+  return window.JSZip;
+}
+
+const SUPPORTED_EXTS = [".pdf", ".jpg", ".jpeg", ".png", ".gif", ".webp", ".bmp", ".tiff", ".tif",
+  ".dxf", ".dwg", ".xlsx", ".xls", ".csv", ".docx", ".txt", ".md"];
+
 // ─── Universal file processor ─────────────────────────────────────────────────
 async function processFile(file, onProg, sig) {
   if (!file) return null;
@@ -572,6 +586,26 @@ function useFileList() {
   const [, setTick] = useState(0);
   const bump = useCallback(() => setTick(t => t + 1), []);
   const add = useCallback(async (file) => {
+    // ZIP: extract and add each file inside recursively
+    if (file.name.toLowerCase().endsWith(".zip")) {
+      try {
+        const JSZip = await loadJSZip();
+        const zip = await JSZip.loadAsync(await file.arrayBuffer());
+        const entries = Object.values(zip.files).filter(f => !f.dir);
+        const supported = entries.filter(f => SUPPORTED_EXTS.some(ext => f.name.toLowerCase().endsWith(ext)));
+        if (supported.length === 0) return; // nothing to process
+        for (const entry of supported) {
+          const buf = await entry.async("arraybuffer");
+          const name = entry.name.split("/").pop(); // strip folder path
+          const innerFile = new File([buf], name);
+          add(innerFile);
+        }
+      } catch {
+        // silently skip unreadable ZIP
+      }
+      return;
+    }
+
     const id = "f" + Date.now() + "_" + Math.random().toString(36).slice(2);
     const ctrl = new AbortController();
     ref.current = [...ref.current, { _id: id, _loading: true, _progress: 0, _ctrl: ctrl, filename: file.name, preview: null, pages: [], type: null }];
@@ -1895,6 +1929,24 @@ export default function App() {
   const [linkSearchProgress, setLinkSearchProgress] = useState({ done: 0, total: 0 });
 
   const allFilesList = useFileList();
+
+  // Open external links in the system browser (fixes blank window in Tauri)
+  useEffect(() => {
+    const handler = e => {
+      const a = e.target.closest("a[href]");
+      if (!a) return;
+      const href = a.getAttribute("href");
+      if (!href || href.startsWith("#")) return;
+      if (window.__TAURI__) {
+        e.preventDefault();
+        window.__TAURI__.opener
+          ? window.__TAURI__.opener.openUrl(href)
+          : window.__TAURI__.shell?.open(href);
+      }
+    };
+    document.addEventListener("click", handler);
+    return () => document.removeEventListener("click", handler);
+  }, []);
 
   const saveKey = k => { setApiKey(k); try { localStorage.setItem("anthropic_api_key", k); } catch { /* ignore */ } };
   const saveTavilyKey = k => { setTavilyKey(k); try { localStorage.setItem("tavily_api_key", k); } catch { /* ignore */ } };

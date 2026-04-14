@@ -3,6 +3,7 @@ import react from '@vitejs/plugin-react'
 
 export default defineConfig({
   plugins: [react()],
+  base: process.env.GITHUB_PAGES ? '/tz-tool/' : '/',
   // Tauri needs a fixed port and no browser auto-open
   clearScreen: false,
   server: {

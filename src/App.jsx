@@ -90,19 +90,19 @@ async function pdfToPages(file, onProg, sig) {
     let b64, mediaType;
     if (!isTextRich) {
       const pngB64 = canvas.toDataURL("image/png").split(",")[1];
-      if (pngB64.length * 0.75 <= 4e6) {
+      if (pngB64 && pngB64.length * 0.75 <= 4e6) {
         b64 = pngB64; mediaType = "image/png";
       } else {
         // PNG too large — fallback to high-quality JPEG
         let q = 0.88;
         b64 = canvas.toDataURL("image/jpeg", q).split(",")[1];
-        while (b64.length * 0.75 > 4e6 && q > 0.25) { q -= 0.07; b64 = canvas.toDataURL("image/jpeg", q).split(",")[1]; }
+        while (b64 && b64.length * 0.75 > 4e6 && q > 0.25) { q -= 0.07; b64 = canvas.toDataURL("image/jpeg", q).split(",")[1]; }
         mediaType = "image/jpeg";
       }
     } else {
       let q = 0.78;
       b64 = canvas.toDataURL("image/jpeg", q).split(",")[1];
-      while (b64.length * 0.75 > 4e6 && q > 0.25) { q -= 0.07; b64 = canvas.toDataURL("image/jpeg", q).split(",")[1]; }
+      while (b64 && b64.length * 0.75 > 4e6 && q > 0.25) { q -= 0.07; b64 = canvas.toDataURL("image/jpeg", q).split(",")[1]; }
       mediaType = "image/jpeg";
     }
 
@@ -135,7 +135,7 @@ async function imageToB64(file, onProg, sig) {
           canvas.width = w; canvas.height = h;
           canvas.getContext("2d").drawImage(img, 0, 0, w, h);
           let qq = 0.72, b64 = canvas.toDataURL("image/jpeg", qq).split(",")[1];
-          while (b64.length * 0.75 > 2.5e6 && qq > 0.3) { qq -= 0.1; b64 = canvas.toDataURL("image/jpeg", qq).split(",")[1]; }
+          while (b64 && b64.length * 0.75 > 2.5e6 && qq > 0.3) { qq -= 0.1; b64 = canvas.toDataURL("image/jpeg", qq).split(",")[1]; }
           const preview = canvas.toDataURL("image/jpeg", 0.75);
           onProg?.(100);
           res({ b64, preview, type: "image", filename: file.name, pages: [{ b64, preview }] });
@@ -452,8 +452,9 @@ async function processFile(file, onProg, sig) {
     ]);
     onProg?.(100);
     const textContent = textResult.status === "fulfilled" ? textResult.value : "[помилка читання DWG]";
-    const b64 = canvasResult.status === "fulfilled" ? canvasResult.value?.split(",")[1] : null;
-    const pages = b64 ? [{ b64, preview: canvasResult.value }] : [];
+    const rawCanvas = canvasResult.status === "fulfilled" ? canvasResult.value : null;
+    const b64 = rawCanvas?.includes(",") ? rawCanvas.split(",")[1] : null;
+    const pages = b64 ? [{ b64, preview: rawCanvas }] : [];
     return { pages, type: "dwg", filename: file.name, ext: "DWG", textContent };
   }
   if (nm.endsWith(".xlsx") || nm.endsWith(".xls") || nm.endsWith(".csv")) {
@@ -636,7 +637,7 @@ function useFileList() {
             ? { ...x, pages: x.pages.map((pg, i) => i === pageIdx ? { ...pg, ...patch } : pg) }
             : x);
           bump();
-        });
+        }).catch(() => {});
       } else if (pagesWithMeta.length === 1) {
         // single page — no need for per-page classification, remove _classifying
         ref.current = ref.current.map(x => x._id === id
@@ -2034,7 +2035,7 @@ export default function App() {
           }
         }
       } catch { /* skip */ }
-      setLinkSearchProgress({ done: ++done, total: items.length });
+      setLinkSearchProgress(prev => ({ done: prev.done + 1, total: items.length }));
     }));
     setSearchingLinks(false);
   }

@@ -2263,50 +2263,6 @@ ${briefText.trim() || "(дивись прикріплені матеріали)"
     );
   }
 
-  // ── Onboarding screen ──────────────────────────────────────────────────────
-  if (!apiKey) {
-    return (
-      <div style={{ minHeight: "100vh", background: "#0f0f0f", display: "flex", alignItems: "center", justifyContent: "center", padding: 24 }}>
-        <div style={{ width: "100%", maxWidth: 420 }}>
-          {/* Logo */}
-          <div style={{ fontFamily: "monospace", fontSize: 10, letterSpacing: "0.2em", color: "#444", marginBottom: 12 }}>ТЗ TOOL</div>
-          <h1 style={{ fontSize: 26, fontWeight: 700, color: "#f2f0ec", lineHeight: 1.25, marginBottom: 10 }}>
-            Розбір ТЗ для<br />3D-візуалізації
-          </h1>
-          <p style={{ fontSize: 13, color: "#666", lineHeight: 1.6, marginBottom: 32 }}>
-            Завантажуєш файли клієнта — отримуєш структуроване ТЗ по кімнатах і виробничих стадіях.<br />
-            Для роботи потрібен ключ Anthropic API.
-          </p>
-
-          {/* Key input */}
-          <div style={{ marginBottom: 12 }}>
-            <div style={{ fontSize: 10, fontFamily: "monospace", color: "#555", letterSpacing: "0.12em", marginBottom: 8 }}>ANTHROPIC API KEY</div>
-            <input
-              autoFocus
-              type="password"
-              placeholder="sk-ant-api03-..."
-              style={{ width: "100%", background: "#1a1a1a", border: "1px solid #2a2a2a", color: "#f2f0ec", fontSize: 13, fontFamily: "monospace", padding: "12px 14px", borderRadius: 8, outline: "none", letterSpacing: "0.04em" }}
-              onKeyDown={e => { if (e.key === "Enter" && e.target.value.trim()) saveKey(e.target.value.trim()); }}
-              onChange={e => { if (e.target.value.trim().startsWith("sk-ant")) saveKey(e.target.value.trim()); }}
-            />
-          </div>
-          <button
-            style={{ width: "100%", background: "#f2f0ec", color: "#1a1a1a", border: "none", borderRadius: 8, padding: "13px", fontSize: 12, fontFamily: "monospace", fontWeight: 700, letterSpacing: "0.12em", cursor: "pointer", marginBottom: 20 }}
-            onClick={e => { const inp = e.target.closest("div").previousSibling?.querySelector("input"); if (inp?.value.trim()) saveKey(inp.value.trim()); }}
-          >
-            ПОЧАТИ →
-          </button>
-
-          {/* Help */}
-          <div style={{ fontSize: 11, color: "#444", lineHeight: 1.7 }}>
-            <div>Де взяти ключ: <span style={{ color: "#666", fontFamily: "monospace" }}>console.anthropic.com → API Keys</span></div>
-            <div style={{ marginTop: 4 }}>Ключ зберігається тільки локально у браузері.</div>
-          </div>
-        </div>
-      </div>
-    );
-  }
-
   return (
     <div style={{ minHeight: "100vh", background: "#f5f4f1" }}>
       {/* Header */}

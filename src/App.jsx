@@ -1792,7 +1792,7 @@ function TzReviewStep({ projectType, rooms, tzByRoom, sowMissing, sowUnclear, de
         </div>
       )}
 
-      <div style={{ display: "flex", flex: 1, overflow: "hidden", display: (viewMode === "table" || viewMode === "report") ? "none" : "flex" }}>
+      <div style={{ flex: 1, overflow: "hidden", display: (viewMode === "table" || viewMode === "report") ? "none" : "flex" }}>
         {/* Ліва панель */}
         <div style={{ width: 190, background: "#fff", borderRight: "1px solid #ece9e4", flexShrink: 0, overflowY: "auto", display: "flex", flexDirection: "column" }}>
           {/* Annotation */}

@@ -21,6 +21,16 @@
       img { display: none !important; }
       /* Show links as text */
       a::after { content: " (" attr(href) ")"; font-size: 8pt; color: #555; }
+      /* PM Report: hide everything except report content */
+      body:has(.pm-report-content) > #root > * { display: none !important; }
+      body:has(.pm-report-content) .pm-report-content {
+        display: block !important;
+        position: static !important;
+        padding: 24px !important;
+        font-size: 10pt;
+        -webkit-print-color-adjust: exact;
+        print-color-adjust: exact;
+      }
     }
   </style>
   </head>

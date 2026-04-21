@@ -1451,7 +1451,8 @@ const SOURCE_FILE_ICO = { pdf: "📄", dwg: "📐", dxf: "📐", excel: "📊", 
 
 function TzReviewStep({ projectType, rooms, tzByRoom, sowMissing, sowUnclear, deliverySpec, sowCoverage, buildingCoverage, clientComments, annotation, conflicts, roadmap, sources, files, sourceTags, onSourceTag, onEdit, onRemove, onBack, onSearchLinks, searchingLinks, linkSearchProgress }) {
   const allRooms = rooms?.length ? ["Загальне", ...rooms.filter(r => r !== "Загальне")] : ["Загальне"];
-  const [viewMode, setViewMode] = useState("rooms"); // "rooms" | "stages" | "table"
+  const [viewMode, setViewMode] = useState("rooms"); // "rooms" | "stages" | "table" | "report"
+  const [reportMode, setReportMode] = useState("pm"); // "pm" | "client"
   const [activeRoom, setActiveRoom] = useState(allRooms[0]);
   const [activeStage, setActiveStage] = useState(PRODUCTION_STAGES[0]);
   const [lightbox, setLightbox] = useState(null); // { imgRef, itemText }
@@ -1597,6 +1598,82 @@ function TzReviewStep({ projectType, rooms, tzByRoom, sowMissing, sowUnclear, de
     document.title = `ТЗ — ${projectType || "проект"} — ${new Date().toLocaleDateString("uk-UA")}`;
     window.print();
     document.title = prev;
+  };
+
+  const exportReportExcel = async (isClient) => {
+    const XLSX = await loadXLSX();
+    const wb = XLSX.utils.book_new();
+    const date = new Date().toISOString().slice(0, 10);
+
+    if (deliverySpec?.length) {
+      const rows = isClient
+        ? deliverySpec.map(i => ({ "Parameter": i.key, "Value": i.value || "—", "Status": i.source === "unclear" ? "⚠ to clarify" : "" }))
+        : deliverySpec.map(i => ({ "Параметр": i.key, "Значення": i.value || "—", "Джерело": i.source === "brief" ? "✓ з брифу" : i.source === "default" ? "дефолт" : "⚠ уточнити" }));
+      const ws = XLSX.utils.json_to_sheet(rows);
+      ws["!cols"] = [30, 30, 16].map(w => ({ wch: w }));
+      XLSX.utils.book_append_sheet(wb, ws, isClient ? "Delivery Spec" : "Техспек");
+    }
+
+    if (!isClient && sowCoverage?.length) {
+      const rows = sowCoverage.map(r => ({ "Пункт SOW": r.item, "Статус": r.status === "found" ? "✅ знайдено" : r.status === "partial" ? "⚠️ неповно" : "❌ відсутнє", "Знайдено": r.found || "—", "Джерело": r.source || "—" }));
+      const ws = XLSX.utils.json_to_sheet(rows);
+      ws["!cols"] = [40, 16, 40, 24].map(w => ({ wch: w }));
+      XLSX.utils.book_append_sheet(wb, ws, "SOW Coverage");
+    }
+
+    if (!isClient && conflicts?.length) {
+      const rows = conflicts.map((c, i) => ({ "#": i + 1, "Конфлікт": typeof c === "string" ? c : (c.description || c.text || "") }));
+      const ws = XLSX.utils.json_to_sheet(rows);
+      ws["!cols"] = [4, 80].map(w => ({ wch: w }));
+      XLSX.utils.book_append_sheet(wb, ws, "Конфлікти");
+    }
+
+    const missing = sowMissing || [];
+    const unclear = sowUnclear || [];
+    if (missing.length || unclear.length) {
+      const rows = [
+        ...missing.map(s => ({ [isClient ? "Type" : "Тип"]: isClient ? "Missing" : "Відсутнє", [isClient ? "Question" : "Питання"]: s })),
+        ...unclear.map(s => ({ [isClient ? "Type" : "Тип"]: isClient ? "Incomplete" : "Неповно",  [isClient ? "Question" : "Питання"]: s })),
+      ];
+      const ws = XLSX.utils.json_to_sheet(rows);
+      ws["!cols"] = [14, 80].map(w => ({ wch: w }));
+      XLSX.utils.book_append_sheet(wb, ws, isClient ? "Open Questions" : "Питання");
+    }
+
+    XLSX.writeFile(wb, `report-${isClient ? "client" : "pm"}-${date}.xlsx`);
+  };
+
+  const exportReportPdf = (isClient) => {
+    const date = new Date().toLocaleDateString(isClient ? "en-US" : "uk-UA");
+    const specRows = (deliverySpec || []).map((item, i) => `
+      <tr style="background:${i%2===0?"#fafafa":"#fff"}">
+        <td>${item.key}</td><td>${item.value || "—"}</td>
+        ${isClient ? `<td style="color:${item.source==="unclear"?"#e67e22":"#aaa"}">${item.source==="unclear"?"⚠ to clarify":""}</td>` : `<td style="color:${item.source==="brief"?"#27ae60":item.source==="unclear"?"#e67e22":"#aaa"}">${item.source==="brief"?"✓ з брифу":item.source==="unclear"?"⚠ уточнити":"дефолт"}</td>`}
+      </tr>`).join("");
+    const coverageRows = (!isClient && sowCoverage?.length) ? sowCoverage.map((row, i) => `
+      <tr style="background:${i%2===0?"#fafafa":"#fff"}">
+        <td>${row.item}</td>
+        <td style="color:${row.status==="found"?"#27ae60":row.status==="partial"?"#e67e22":"#e74c3c"}">${row.status==="found"?"✅":row.status==="partial"?"⚠️":"❌"}</td>
+        <td>${row.found||"—"}</td><td style="color:#888">${row.source||"—"}</td>
+      </tr>`).join("") : "";
+    const conflictRows = (!isClient && conflicts?.length) ? conflicts.map(c => `<div style="padding:8px 12px;border-left:3px solid #e74c3c;margin-bottom:6px;font-size:11px">⚡ ${typeof c==="string"?c:(c.description||c.text||"")}</div>`).join("") : "";
+    const allQ = [...(sowMissing||[]).map(s=>`<div style="padding:8px 12px;border-left:3px solid #e74c3c;margin-bottom:6px;font-size:11px">❌ ${s}</div>`), ...(sowUnclear||[]).map(s=>`<div style="padding:8px 12px;border-left:3px solid #e67e22;margin-bottom:6px;font-size:11px">⚠️ ${s}</div>`)].join("");
+    const html = `<!DOCTYPE html><html><head><meta charset="UTF-8"><title>${isClient?"Client Report":"Звіт ПМа"} — ${projectType} — ${date}</title>
+    <style>body{font-family:monospace;font-size:11px;color:#222;padding:32px;max-width:900px;margin:0 auto}h2{font-size:13px;font-weight:700;margin:24px 0 8px;letter-spacing:.08em;color:#555}table{width:100%;border-collapse:collapse;margin-bottom:8px}th{background:#f0eeea;padding:5px 10px;text-align:left;font-size:9px;letter-spacing:.08em;color:#888}td{padding:6px 10px;border-bottom:1px solid #f0f0f0;vertical-align:top}@media print{body{padding:16px}}</style>
+    </head><body>
+    <div style="font-size:10px;color:#bbb;margin-bottom:4px">${isClient?"CLIENT REPORT":"ЗВІТ ПМА"}</div>
+    <div style="font-size:16px;font-weight:700;margin-bottom:4px">${projectType||""}</div>
+    <div style="font-size:10px;color:#aaa;margin-bottom:24px">${date}</div>
+    ${specRows?`<h2>${isClient?"DELIVERY SPECIFICATION":"ТЕХНІЧНА СПЕЦИФІКАЦІЯ"}</h2><table><thead><tr><th>${isClient?"Parameter":"Параметр"}</th><th>${isClient?"Value":"Значення"}</th><th>${isClient?"Status":"Джерело"}</th></tr></thead><tbody>${specRows}</tbody></table>`:""}
+    ${coverageRows?`<h2>SOW ПОКРИТТЯ</h2><table><thead><tr><th>Пункт SOW</th><th>Статус</th><th>Знайдено</th><th>Джерело</th></tr></thead><tbody>${coverageRows}</tbody></table>`:""}
+    ${conflictRows?`<h2>КОНФЛІКТИ МІЖ ФАЙЛАМИ</h2>${conflictRows}`:""}
+    ${allQ?`<h2>${isClient?"OPEN QUESTIONS":"ПИТАННЯ ДО КЛІЄНТА"}</h2>${allQ}`:""}
+    </body></html>`;
+    const w = window.open("", "_blank");
+    w.document.write(html);
+    w.document.close();
+    w.focus();
+    setTimeout(() => w.print(), 400);
   };
 
   return (
@@ -1747,50 +1824,137 @@ function TzReviewStep({ projectType, rooms, tzByRoom, sowMissing, sowUnclear, de
         </div>
       )}
 
-      {viewMode === "report" && (
+      {viewMode === "report" && (() => {
+        const isClient = reportMode === "client";
+        return (
         <div style={{ flex: 1, overflow: "auto", padding: "16px 20px", background: "#f5f4f1" }}>
-          {buildingCoverage ? (
-            <div style={{ display: "flex", alignItems: "center", gap: 10, padding: 24, color: "#888", fontFamily: "monospace", fontSize: 12 }}>
-              <span style={{ fontSize: 16 }}>⏳</span> Генерую SOW-матрицю...
+          {/* Toggle ПМ / Клієнт */}
+          <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 20 }}>
+            <button onClick={() => setReportMode("pm")} style={{ fontSize: 9, fontFamily: "monospace", padding: "4px 14px", border: "none", borderRadius: 4, cursor: "pointer", background: !isClient ? "#1a1a1a" : "#e8e6e2", color: !isClient ? "#fff" : "#888", fontWeight: !isClient ? 700 : 400 }}>ПМ</button>
+            <button onClick={() => setReportMode("client")} style={{ fontSize: 9, fontFamily: "monospace", padding: "4px 14px", border: "none", borderRadius: 4, cursor: "pointer", background: isClient ? "#2980b9" : "#e8e6e2", color: isClient ? "#fff" : "#888", fontWeight: isClient ? 700 : 400 }}>Клієнт</button>
+            <span style={{ fontSize: 9, fontFamily: "monospace", color: "#bbb", marginLeft: 4 }}>{!isClient ? "внутрішній — конфлікти, джерела, повне покриття" : "external — delivery spec + open questions"}</span>
+            <div style={{ marginLeft: "auto", display: "flex", gap: 6 }}>
+              <button onClick={() => exportReportExcel(isClient)} style={{ fontSize: 9, fontFamily: "monospace", padding: "4px 12px", border: "1px solid #27ae60", borderRadius: 4, cursor: "pointer", background: "#fff", color: "#27ae60", fontWeight: 700 }}>↓ XLS</button>
+              <button onClick={() => exportReportPdf(isClient)} style={{ fontSize: 9, fontFamily: "monospace", padding: "4px 12px", border: "1px solid #e74c3c", borderRadius: 4, cursor: "pointer", background: "#fff", color: "#e74c3c", fontWeight: 700 }}>↓ PDF</button>
             </div>
-          ) : !sowCoverage?.length ? (
-            <div style={{ color: "#bbb", fontFamily: "monospace", fontSize: 12, padding: 24 }}>Звіт ще не побудований</div>
-          ) : (
-            <div style={{ maxWidth: 900 }}>
-              <div style={{ fontSize: 10, fontFamily: "monospace", color: "#bbb", letterSpacing: "0.1em", marginBottom: 12 }}>SOW МАТРИЦЯ — {projectType}</div>
-              <div style={{ border: "1px solid #e0e0e0", borderRadius: 6, overflow: "hidden", background: "#fff" }}>
-                <div style={{ display: "grid", gridTemplateColumns: "1fr 80px 1fr 140px", padding: "6px 14px", background: "#f0eeea", borderBottom: "1px solid #e0e0e0" }}>
-                  {["Пункт SOW", "Статус", "Знайдено", "Джерело"].map(h => (
-                    <span key={h} style={{ fontSize: 9, fontWeight: 700, color: "#888", fontFamily: "monospace", letterSpacing: "0.08em" }}>{h}</span>
-                  ))}
-                </div>
-                {sowCoverage.map((row, i) => {
-                  const statusIcon = row.status === "found" ? "✅" : row.status === "partial" ? "⚠️" : "❌";
-                  const statusColor = row.status === "found" ? "#27ae60" : row.status === "partial" ? "#e67e22" : "#e74c3c";
-                  return (
-                    <div key={i} style={{ display: "grid", gridTemplateColumns: "1fr 80px 1fr 140px", padding: "7px 14px", background: i % 2 === 0 ? "#fafafa" : "#fff", borderBottom: i < sowCoverage.length - 1 ? "1px solid #f0f0f0" : "none", alignItems: "start" }}>
-                      <span style={{ fontSize: 11, color: "#333", fontFamily: "monospace", paddingRight: 8 }}>{row.item}</span>
-                      <span style={{ fontSize: 11, color: statusColor, fontFamily: "monospace", fontWeight: 700 }}>{statusIcon}</span>
-                      <span style={{ fontSize: 11, color: "#555", fontFamily: "monospace", paddingRight: 8 }}>{row.found || "—"}</span>
-                      {row.source ? (
-                        <span onClick={() => openDocByLabel(row.source, row.item)}
-                          style={{ fontSize: 10, color: "#2980b9", fontFamily: "monospace", cursor: "pointer", textDecoration: "underline", wordBreak: "break-word" }}>
-                          {row.source} ↗
-                        </span>
-                      ) : (
-                        <span style={{ fontSize: 10, color: "#bbb", fontFamily: "monospace" }}>—</span>
-                      )}
-                    </div>
-                  );
-                })}
-              </div>
-              <div style={{ marginTop: 8, fontSize: 9, color: "#bbb", fontFamily: "monospace" }}>
-                {sowCoverage.filter(r => r.status === "found").length} знайдено · {sowCoverage.filter(r => r.status === "partial").length} неповно · {sowCoverage.filter(r => r.status === "missing").length} відсутнє
-              </div>
+          </div>
+
+          {buildingCoverage && (
+            <div style={{ display: "flex", alignItems: "center", gap: 10, padding: 16, color: "#888", fontFamily: "monospace", fontSize: 12, background: "#fff", borderRadius: 6, marginBottom: 16 }}>
+              <span style={{ fontSize: 16 }}>⏳</span> {isClient ? "Building SOW matrix..." : "Генерую SOW-матрицю..."}
             </div>
           )}
+
+          <div style={{ maxWidth: 900 }} className="pm-report-content">
+
+            {/* DELIVERY SPEC */}
+            {deliverySpec?.length > 0 && (
+              <div style={{ marginBottom: 24 }}>
+                <div style={{ fontSize: 9, fontFamily: "monospace", color: "#bbb", letterSpacing: "0.12em", marginBottom: 8 }}>{isClient ? "DELIVERY SPECIFICATION" : "ТЕХНІЧНА СПЕЦИФІКАЦІЯ"}</div>
+                <div style={{ border: "1px solid #e0e0e0", borderRadius: 6, overflow: "hidden", background: "#fff" }}>
+                  {deliverySpec.map((item, i) => (
+                    <div key={i} style={{ display: "flex", alignItems: "center", padding: "7px 14px", background: i % 2 === 0 ? "#fafafa" : "#fff", borderBottom: i < deliverySpec.length - 1 ? "1px solid #f0f0f0" : "none" }}>
+                      <span style={{ fontSize: 11, color: "#777", fontFamily: "monospace", width: 180, flexShrink: 0 }}>{item.key}</span>
+                      <span style={{ fontSize: 12, color: item.source === "unclear" ? "#bbb" : "#222", flex: 1, fontFamily: "monospace" }}>{item.value || "—"}</span>
+                      {!isClient && item.source === "brief"   && <span style={{ fontSize: 9, color: "#27ae60", fontFamily: "monospace", fontWeight: 700, whiteSpace: "nowrap" }}>✓ з брифу</span>}
+                      {!isClient && item.source === "default" && <span style={{ fontSize: 9, color: "#aaa",    fontFamily: "monospace",               whiteSpace: "nowrap" }}>дефолт</span>}
+                      {item.source === "unclear" && <span style={{ fontSize: 9, color: "#e67e22", fontFamily: "monospace", fontWeight: 700, whiteSpace: "nowrap" }}>{isClient ? "⚠ to clarify" : "⚠ уточнити"}</span>}
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* SOW COVERAGE — тільки в режимі ПМ */}
+            {!isClient && (
+              <div style={{ marginBottom: 24 }}>
+                <div style={{ fontSize: 9, fontFamily: "monospace", color: "#bbb", letterSpacing: "0.12em", marginBottom: 8 }}>SOW ПОКРИТТЯ — {projectType}</div>
+                {!sowCoverage?.length && !buildingCoverage ? (
+                  <div style={{ color: "#bbb", fontFamily: "monospace", fontSize: 11, padding: "12px 0" }}>Матриця ще не побудована</div>
+                ) : sowCoverage?.length > 0 && (
+                  <>
+                    <div style={{ border: "1px solid #e0e0e0", borderRadius: 6, overflow: "hidden", background: "#fff" }}>
+                      <div style={{ display: "grid", gridTemplateColumns: "1fr 72px 1fr 140px", padding: "6px 14px", background: "#f0eeea", borderBottom: "1px solid #e0e0e0" }}>
+                        {["Пункт SOW", "Статус", "Знайдено", "Джерело"].map(h => (
+                          <span key={h} style={{ fontSize: 9, fontWeight: 700, color: "#888", fontFamily: "monospace", letterSpacing: "0.08em" }}>{h}</span>
+                        ))}
+                      </div>
+                      {sowCoverage.map((row, i) => {
+                        const statusIcon = row.status === "found" ? "✅" : row.status === "partial" ? "⚠️" : "❌";
+                        const statusColor = row.status === "found" ? "#27ae60" : row.status === "partial" ? "#e67e22" : "#e74c3c";
+                        return (
+                          <div key={i} style={{ display: "grid", gridTemplateColumns: "1fr 72px 1fr 140px", padding: "7px 14px", background: i % 2 === 0 ? "#fafafa" : "#fff", borderBottom: i < sowCoverage.length - 1 ? "1px solid #f0f0f0" : "none", alignItems: "start" }}>
+                            <span style={{ fontSize: 11, color: "#333", fontFamily: "monospace", paddingRight: 8 }}>{row.item}</span>
+                            <span style={{ fontSize: 11, color: statusColor, fontFamily: "monospace", fontWeight: 700 }}>{statusIcon}</span>
+                            <span style={{ fontSize: 11, color: "#555", fontFamily: "monospace", paddingRight: 8 }}>{row.found || "—"}</span>
+                            {row.source ? (
+                              <span onClick={() => openDocByLabel(row.source, row.item)} style={{ fontSize: 10, color: "#2980b9", fontFamily: "monospace", cursor: "pointer", textDecoration: "underline", wordBreak: "break-word" }}>{row.source} ↗</span>
+                            ) : (
+                              <span style={{ fontSize: 10, color: "#bbb", fontFamily: "monospace" }}>—</span>
+                            )}
+                          </div>
+                        );
+                      })}
+                    </div>
+                    <div style={{ marginTop: 6, fontSize: 9, color: "#bbb", fontFamily: "monospace" }}>
+                      {sowCoverage.filter(r => r.status === "found").length} знайдено · {sowCoverage.filter(r => r.status === "partial").length} неповно · {sowCoverage.filter(r => r.status === "missing").length} відсутнє
+                    </div>
+                  </>
+                )}
+              </div>
+            )}
+
+            {/* КОНФЛІКТИ — тільки в режимі ПМ */}
+            {!isClient && conflicts?.length > 0 && (
+              <div style={{ marginBottom: 24 }}>
+                <div style={{ fontSize: 9, fontFamily: "monospace", color: "#bbb", letterSpacing: "0.12em", marginBottom: 8 }}>КОНФЛІКТИ МІЖ ФАЙЛАМИ</div>
+                <div style={{ border: "1px solid #fce4d6", borderRadius: 6, overflow: "hidden", background: "#fff" }}>
+                  {conflicts.map((c, i) => (
+                    <div key={i} style={{ display: "flex", gap: 10, padding: "10px 14px", background: i % 2 === 0 ? "#fffaf8" : "#fff", borderBottom: i < conflicts.length - 1 ? "1px solid #fce4d6" : "none", alignItems: "flex-start" }}>
+                      <span style={{ fontSize: 13, flexShrink: 0 }}>⚡</span>
+                      <span style={{ fontSize: 11, color: "#333", lineHeight: 1.5, fontFamily: "monospace" }}>{typeof c === "string" ? c : (c.description || c.text || JSON.stringify(c))}</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* ПИТАННЯ ДО КЛІЄНТА / CLIENT QUESTIONS */}
+            {((sowMissing?.length > 0) || (sowUnclear?.length > 0)) && (
+              <div style={{ marginBottom: 24 }}>
+                <div style={{ fontSize: 9, fontFamily: "monospace", color: "#bbb", letterSpacing: "0.12em", marginBottom: 8 }}>{isClient ? "OPEN QUESTIONS" : "ПИТАННЯ ДО КЛІЄНТА"}</div>
+                <div style={{ border: "1px solid #e0e0e0", borderRadius: 6, overflow: "hidden", background: "#fff" }}>
+                  {(sowMissing || []).map((s, i) => (
+                    <div key={`miss-${i}`} style={{ display: "flex", gap: 10, padding: "9px 14px", background: i % 2 === 0 ? "#fffaf8" : "#fff", borderBottom: "1px solid #f5f0ec", alignItems: "flex-start" }}>
+                      <span style={{ fontSize: 11, color: "#e74c3c", fontFamily: "monospace", fontWeight: 700, flexShrink: 0 }}>❌</span>
+                      <span style={{ fontSize: 11, color: "#333", fontFamily: "monospace", lineHeight: 1.5 }}>{s}</span>
+                    </div>
+                  ))}
+                  {(sowUnclear || []).map((s, i) => (
+                    <div key={`unclear-${i}`} style={{ display: "flex", gap: 10, padding: "9px 14px", background: ((sowMissing?.length || 0) + i) % 2 === 0 ? "#fffaf8" : "#fff", borderBottom: i < (sowUnclear.length - 1) ? "1px solid #f5f0ec" : "none", alignItems: "flex-start" }}>
+                      <span style={{ fontSize: 11, color: "#e67e22", fontFamily: "monospace", fontWeight: 700, flexShrink: 0 }}>⚠️</span>
+                      <span style={{ fontSize: 11, color: "#333", fontFamily: "monospace", lineHeight: 1.5 }}>{s}</span>
+                    </div>
+                  ))}
+                </div>
+                <div style={{ marginTop: 6, fontSize: 9, color: "#bbb", fontFamily: "monospace" }}>
+                  {isClient
+                    ? `${sowMissing?.length || 0} missing · ${sowUnclear?.length || 0} incomplete`
+                    : `${sowMissing?.length || 0} відсутніх · ${sowUnclear?.length || 0} неповних`}
+                </div>
+              </div>
+            )}
+
+            {/* Порожній стан */}
+            {!deliverySpec?.length && !sowCoverage?.length && !buildingCoverage && !conflicts?.length && !sowMissing?.length && !sowUnclear?.length && (
+              <div style={{ color: "#bbb", fontFamily: "monospace", fontSize: 11, padding: "24px 0" }}>
+                {isClient ? "Report not ready — run analysis first" : "Звіт ще не побудований — запустіть аналіз"}
+              </div>
+            )}
+          </div>
         </div>
-      )}
+        );
+      })()}
 
       <div style={{ flex: 1, overflow: "hidden", display: (viewMode === "table" || viewMode === "report") ? "none" : "flex" }}>
         {/* Ліва панель */}

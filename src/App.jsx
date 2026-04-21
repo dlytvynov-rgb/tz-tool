@@ -1449,7 +1449,7 @@ const SOURCE_TYPE_COLOR = {
 };
 const SOURCE_FILE_ICO = { pdf: "📄", dwg: "📐", dxf: "📐", excel: "📊", text: "📝", image: "🖼️" };
 
-function TzReviewStep({ projectType, rooms, tzByRoom, sowMissing, sowUnclear, deliverySpec, sowCoverage, buildingCoverage, clientComments, annotation, conflicts, roadmap, sources, files, sourceTags, onSourceTag, onEdit, onRemove, onBack, onSearchLinks, searchingLinks, linkSearchProgress }) {
+function TzReviewStep({ projectType, rooms, tzByRoom, sowMissing, sowUnclear, deliverySpec, sowCoverage, buildingCoverage, clientComments, annotation, conflicts, roadmap, sources, files, sourceTags, onSourceTag, onEdit, onRemove, onBack, onSearchLinks, searchingLinks, linkSearchProgress, clientTranslation, buildingClientTranslation, onBuildClientTranslation }) {
   const allRooms = rooms?.length ? ["Загальне", ...rooms.filter(r => r !== "Загальне")] : ["Загальне"];
   const [viewMode, setViewMode] = useState("rooms"); // "rooms" | "stages" | "table" | "report"
   const [reportMode, setReportMode] = useState("pm"); // "pm" | "client"
@@ -1826,34 +1826,41 @@ function TzReviewStep({ projectType, rooms, tzByRoom, sowMissing, sowUnclear, de
 
       {viewMode === "report" && (() => {
         const isClient = reportMode === "client";
+        const cSpec   = isClient && clientTranslation ? clientTranslation.deliverySpec : deliverySpec;
+        const cQ      = isClient && clientTranslation ? clientTranslation.questions    : [...(sowMissing||[]), ...(sowUnclear||[])];
+        const cQMiss  = isClient && clientTranslation ? clientTranslation.questions.slice(0, (sowMissing||[]).length) : (sowMissing||[]);
+        const cQUnc   = isClient && clientTranslation ? clientTranslation.questions.slice((sowMissing||[]).length)   : (sowUnclear||[]);
+        const cConfl  = isClient && clientTranslation ? clientTranslation.conflicts    : (conflicts||[]);
         return (
         <div style={{ flex: 1, overflow: "auto", padding: "16px 20px", background: "#f5f4f1" }}>
           {/* Toggle ПМ / Клієнт */}
           <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 20 }}>
             <button onClick={() => setReportMode("pm")} style={{ fontSize: 9, fontFamily: "monospace", padding: "4px 14px", border: "none", borderRadius: 4, cursor: "pointer", background: !isClient ? "#1a1a1a" : "#e8e6e2", color: !isClient ? "#fff" : "#888", fontWeight: !isClient ? 700 : 400 }}>ПМ</button>
-            <button onClick={() => setReportMode("client")} style={{ fontSize: 9, fontFamily: "monospace", padding: "4px 14px", border: "none", borderRadius: 4, cursor: "pointer", background: isClient ? "#2980b9" : "#e8e6e2", color: isClient ? "#fff" : "#888", fontWeight: isClient ? 700 : 400 }}>Клієнт</button>
-            <span style={{ fontSize: 9, fontFamily: "monospace", color: "#bbb", marginLeft: 4 }}>{!isClient ? "внутрішній — конфлікти, джерела, повне покриття" : "external — delivery spec + open questions"}</span>
+            <button onClick={() => { setReportMode("client"); onBuildClientTranslation?.(); }} style={{ fontSize: 9, fontFamily: "monospace", padding: "4px 14px", border: "none", borderRadius: 4, cursor: "pointer", background: isClient ? "#2980b9" : "#e8e6e2", color: isClient ? "#fff" : "#888", fontWeight: isClient ? 700 : 400 }}>Клієнт</button>
+            <span style={{ fontSize: 9, fontFamily: "monospace", color: "#bbb", marginLeft: 4 }}>
+              {!isClient ? "внутрішній — конфлікти, джерела, повне покриття" : buildingClientTranslation ? "⏳ translating..." : clientTranslation ? "translated ✓" : "external — delivery spec + open questions"}
+            </span>
             <div style={{ marginLeft: "auto", display: "flex", gap: 6 }}>
               <button onClick={() => exportReportExcel(isClient)} style={{ fontSize: 9, fontFamily: "monospace", padding: "4px 12px", border: "1px solid #27ae60", borderRadius: 4, cursor: "pointer", background: "#fff", color: "#27ae60", fontWeight: 700 }}>↓ XLS</button>
               <button onClick={() => exportReportPdf(isClient)} style={{ fontSize: 9, fontFamily: "monospace", padding: "4px 12px", border: "1px solid #e74c3c", borderRadius: 4, cursor: "pointer", background: "#fff", color: "#e74c3c", fontWeight: 700 }}>↓ PDF</button>
             </div>
           </div>
 
-          {buildingCoverage && (
+          {(buildingCoverage || buildingClientTranslation) && (
             <div style={{ display: "flex", alignItems: "center", gap: 10, padding: 16, color: "#888", fontFamily: "monospace", fontSize: 12, background: "#fff", borderRadius: 6, marginBottom: 16 }}>
-              <span style={{ fontSize: 16 }}>⏳</span> {isClient ? "Building SOW matrix..." : "Генерую SOW-матрицю..."}
+              <span style={{ fontSize: 16 }}>⏳</span> {buildingClientTranslation ? "Translating report to English..." : isClient ? "Building SOW matrix..." : "Генерую SOW-матрицю..."}
             </div>
           )}
 
           <div style={{ maxWidth: 900 }} className="pm-report-content">
 
             {/* DELIVERY SPEC */}
-            {deliverySpec?.length > 0 && (
+            {cSpec?.length > 0 && (
               <div style={{ marginBottom: 24 }}>
                 <div style={{ fontSize: 9, fontFamily: "monospace", color: "#bbb", letterSpacing: "0.12em", marginBottom: 8 }}>{isClient ? "DELIVERY SPECIFICATION" : "ТЕХНІЧНА СПЕЦИФІКАЦІЯ"}</div>
                 <div style={{ border: "1px solid #e0e0e0", borderRadius: 6, overflow: "hidden", background: "#fff" }}>
-                  {deliverySpec.map((item, i) => (
-                    <div key={i} style={{ display: "flex", alignItems: "center", padding: "7px 14px", background: i % 2 === 0 ? "#fafafa" : "#fff", borderBottom: i < deliverySpec.length - 1 ? "1px solid #f0f0f0" : "none" }}>
+                  {cSpec.map((item, i) => (
+                    <div key={i} style={{ display: "flex", alignItems: "center", padding: "7px 14px", background: i % 2 === 0 ? "#fafafa" : "#fff", borderBottom: i < cSpec.length - 1 ? "1px solid #f0f0f0" : "none" }}>
                       <span style={{ fontSize: 11, color: "#777", fontFamily: "monospace", width: 180, flexShrink: 0 }}>{item.key}</span>
                       <span style={{ fontSize: 12, color: item.source === "unclear" ? "#bbb" : "#222", flex: 1, fontFamily: "monospace" }}>{item.value || "—"}</span>
                       {!isClient && item.source === "brief"   && <span style={{ fontSize: 9, color: "#27ae60", fontFamily: "monospace", fontWeight: 700, whiteSpace: "nowrap" }}>✓ з брифу</span>}
@@ -1919,19 +1926,19 @@ function TzReviewStep({ projectType, rooms, tzByRoom, sowMissing, sowUnclear, de
               </div>
             )}
 
-            {/* ПИТАННЯ ДО КЛІЄНТА / CLIENT QUESTIONS */}
-            {((sowMissing?.length > 0) || (sowUnclear?.length > 0)) && (
+            {/* ПИТАННЯ / OPEN QUESTIONS */}
+            {(cQMiss?.length > 0 || cQUnc?.length > 0) && (
               <div style={{ marginBottom: 24 }}>
                 <div style={{ fontSize: 9, fontFamily: "monospace", color: "#bbb", letterSpacing: "0.12em", marginBottom: 8 }}>{isClient ? "OPEN QUESTIONS" : "ПИТАННЯ ДО КЛІЄНТА"}</div>
                 <div style={{ border: "1px solid #e0e0e0", borderRadius: 6, overflow: "hidden", background: "#fff" }}>
-                  {(sowMissing || []).map((s, i) => (
+                  {cQMiss.map((s, i) => (
                     <div key={`miss-${i}`} style={{ display: "flex", gap: 10, padding: "9px 14px", background: i % 2 === 0 ? "#fffaf8" : "#fff", borderBottom: "1px solid #f5f0ec", alignItems: "flex-start" }}>
                       <span style={{ fontSize: 11, color: "#e74c3c", fontFamily: "monospace", fontWeight: 700, flexShrink: 0 }}>❌</span>
                       <span style={{ fontSize: 11, color: "#333", fontFamily: "monospace", lineHeight: 1.5 }}>{s}</span>
                     </div>
                   ))}
-                  {(sowUnclear || []).map((s, i) => (
-                    <div key={`unclear-${i}`} style={{ display: "flex", gap: 10, padding: "9px 14px", background: ((sowMissing?.length || 0) + i) % 2 === 0 ? "#fffaf8" : "#fff", borderBottom: i < (sowUnclear.length - 1) ? "1px solid #f5f0ec" : "none", alignItems: "flex-start" }}>
+                  {cQUnc.map((s, i) => (
+                    <div key={`unclear-${i}`} style={{ display: "flex", gap: 10, padding: "9px 14px", background: (cQMiss.length + i) % 2 === 0 ? "#fffaf8" : "#fff", borderBottom: i < cQUnc.length - 1 ? "1px solid #f5f0ec" : "none", alignItems: "flex-start" }}>
                       <span style={{ fontSize: 11, color: "#e67e22", fontFamily: "monospace", fontWeight: 700, flexShrink: 0 }}>⚠️</span>
                       <span style={{ fontSize: 11, color: "#333", fontFamily: "monospace", lineHeight: 1.5 }}>{s}</span>
                     </div>
@@ -1939,8 +1946,8 @@ function TzReviewStep({ projectType, rooms, tzByRoom, sowMissing, sowUnclear, de
                 </div>
                 <div style={{ marginTop: 6, fontSize: 9, color: "#bbb", fontFamily: "monospace" }}>
                   {isClient
-                    ? `${sowMissing?.length || 0} missing · ${sowUnclear?.length || 0} incomplete`
-                    : `${sowMissing?.length || 0} відсутніх · ${sowUnclear?.length || 0} неповних`}
+                    ? `${cQMiss.length} missing · ${cQUnc.length} incomplete`
+                    : `${cQMiss.length} відсутніх · ${cQUnc.length} неповних`}
                 </div>
               </div>
             )}
@@ -2290,6 +2297,8 @@ export default function App() {
   const [tzDeliverySpec, setTzDeliverySpec] = useState([]);
   const [tzSowCoverage, setTzSowCoverage] = useState([]);
   const [buildingCoverage, setBuildingCoverage] = useState(false);
+  const [tzClientTranslation, setTzClientTranslation] = useState(null); // { deliverySpec, questions, conflicts }
+  const [buildingClientTranslation, setBuildingClientTranslation] = useState(false);
   const [tzConflicts, setTzConflicts] = useState([]);
   const [tzRoadmap, setTzRoadmap] = useState([]);
   const [tzSources, setTzSources] = useState([]);
@@ -2446,6 +2455,37 @@ ${tzText || "(немає даних)"}
       setTzSowCoverage(result.sow_coverage || []);
     } catch { /* silent — coverage tab просто буде порожнім */ }
     setBuildingCoverage(false);
+  }
+
+  async function buildClientTranslation() {
+    if (tzClientTranslation || buildingClientTranslation) return;
+    const hasContent = tzDeliverySpec?.length || tzSowMissing?.length || tzSowUnclear?.length || tzConflicts?.length;
+    if (!hasContent || !apiKey?.trim()) return;
+
+    const payload = {
+      delivery_spec: (tzDeliverySpec || []).map(i => ({ key: i.key, value: i.value || "" })),
+      questions: [...(tzSowMissing || []), ...(tzSowUnclear || [])],
+      conflicts: (tzConflicts || []).map(c => typeof c === "string" ? c : (c.description || c.text || "")),
+    };
+
+    const prompt = `Translate the following project brief data from Ukrainian to English. Keep technical values as-is (e.g. "4K", "72 dpi", "JPEG", numbers, proper nouns). Translate only human-readable labels and sentences.
+
+Input JSON:
+${JSON.stringify(payload, null, 2)}
+
+Return ONLY valid JSON in exactly the same structure with translated values:
+{"delivery_spec":[{"key":"...","value":"..."}],"questions":["..."],"conflicts":["..."]}`;
+
+    setBuildingClientTranslation(true);
+    try {
+      const result = await callAPI([{ type: "text", text: prompt }], 2, apiKey);
+      setTzClientTranslation({
+        deliverySpec: (result.delivery_spec || []).map((t, i) => ({ ...tzDeliverySpec[i], key: t.key, value: t.value })),
+        questions: result.questions || [],
+        conflicts: result.conflicts || [],
+      });
+    } catch { /* silent */ }
+    setBuildingClientTranslation(false);
   }
 
   const readyFiles = fl => (fl.files || []).filter(f => !f._loading && !f._error && f._done);
@@ -2693,6 +2733,7 @@ ${sowTemplatesText}
       setTzRoadmap(result.roadmap || []);
       setTzSources(result.sources || []);
       setTzSourceTags({});
+      setTzClientTranslation(null);
       saveSession({ savedAt: new Date().toISOString(), projectType: result.project_type || "", rooms, tzByRoom: stripImgRefs(byRoom), tzAnnotation: result.project_annotation || "", clientComments: result.client_comments || [], sowMissing: result.sow_missing || [], sowUnclear: result.sow_unclear || [], deliverySpec: result.delivery_spec || [], sowCoverage: [], conflicts: result.conflicts || [], roadmap: result.roadmap || [], sources: result.sources || [] });
       setStage("review");
       if (tavilyKey.trim()) searchLinksWithTavily(byRoom);
@@ -2749,6 +2790,9 @@ ${sowTemplatesText}
         onSearchLinks={tavilyKey ? searchLinksWithTavily : null}
         searchingLinks={searchingLinks}
         linkSearchProgress={linkSearchProgress}
+        clientTranslation={tzClientTranslation}
+        buildingClientTranslation={buildingClientTranslation}
+        onBuildClientTranslation={buildClientTranslation}
       />
     );
   }

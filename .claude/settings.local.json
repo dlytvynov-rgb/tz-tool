@@ -17,7 +17,27 @@
       "Bash(gh auth:*)",
       "Bash(git init:*)",
       "Bash(git add:*)",
-      "Bash(git commit:*)"
+      "Bash(git commit:*)",
+      "Bash(gh repo:*)",
+      "Bash(git tag:*)",
+      "Bash(git push:*)",
+      "Bash(gh run:*)",
+      "Bash(claude mcp:*)",
+      "Bash(git:*)",
+      "Bash(start:*)",
+      "Bash(cmd:*)",
+      "Bash(dir \"C:\\\\Users\\\\dima\\\\tz-tool\\\\src\")",
+      "Bash(npx tauri:*)",
+      "Bash(./node_modules/.bin/tauri add:*)",
+      "Bash(node_modules/@tauri-apps/cli/tauri.js add:*)",
+      "Bash(explorer C:\\\\Users\\\\dima\\\\tz-tool:*)",
+      "Bash(copy:*)",
+      "Bash(pip show:*)",
+      "Bash(python make_presentation.py)",
+      "Bash(netstat -ano)",
+      "Bash(findstr :1420)",
+      "Bash(taskkill *)",
+      "PowerShell(Stop-Process *)"
     ]
   }
 }

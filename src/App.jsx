@@ -1,4 +1,5 @@
 import { useState, useRef, useCallback, useMemo, useEffect } from "react";
+import { LibreDwg, Dwg_File_Type } from "@mlightcad/libredwg-web";
 
 // ─── SheetJS (Excel) ──────────────────────────────────────────────────────────
 async function loadXLSX() {
@@ -112,10 +113,10 @@ async function pdfToPages(file, onProg, sig) {
     previewCanvas.getContext("2d").drawImage(canvas, 0, 0, previewCanvas.width, previewCanvas.height);
     const preview = previewCanvas.toDataURL("image/jpeg", 0.7);
 
-    pages.push({ b64, preview, mediaType, text: pageText, _textRich: isTextRich });
+    pages.push({ b64, preview, mediaType, text: pageText, _textRich: isTextRich, pageNum: i });
     onProg?.(Math.round(i / n * 100));
   }
-  return { pages, type: "pdf", filename: file.name };
+  return { pages, type: "pdf", filename: file.name, ext: "PDF" };
 }
 
 async function imageToB64(file, onProg, sig) {
@@ -138,7 +139,7 @@ async function imageToB64(file, onProg, sig) {
           while (b64 && b64.length * 0.75 > 2.5e6 && qq > 0.3) { qq -= 0.1; b64 = canvas.toDataURL("image/jpeg", qq).split(",")[1]; }
           const preview = canvas.toDataURL("image/jpeg", 0.75);
           onProg?.(100);
-          res({ b64, preview, type: "image", filename: file.name, pages: [{ b64, preview }] });
+          res({ b64, preview, type: "image", filename: file.name, ext: file.name.split(".").pop().toUpperCase(), pages: [{ b64, preview }] });
         } catch (err) { rej(err); }
       };
       img.src = e.target.result;
@@ -147,249 +148,118 @@ async function imageToB64(file, onProg, sig) {
   });
 }
 
-// ─── DWG → DXF via libdxfrw WASM ─────────────────────────────────────────────
-let _libdxfrwPromise = null;
-async function loadLibdxfrw() {
-  if (_libdxfrwPromise) return _libdxfrwPromise;
-  _libdxfrwPromise = (async () => {
-    if (!window.createModule) {
-      await new Promise((res, rej) => {
-        const s = document.createElement("script");
-        s.src = "/libdxfrw.js";
-        s.onload = res; s.onerror = rej;
-        document.head.appendChild(s);
-      });
-    }
-    return window.createModule({ locateFile: (f) => "/" + f });
-  })();
-  return _libdxfrwPromise;
+// ─── DWG parsing via @mlightcad/libredwg-web ──────────────────────────────────
+let _libredwgPromise = null;
+async function loadLibreDwg() {
+  if (_libredwgPromise) return _libredwgPromise;
+  _libredwgPromise = LibreDwg.create("");
+  return _libredwgPromise;
 }
 
-async function dwgLoadDatabase(file) {
-  const lib = await loadLibdxfrw();
-  const buf = await file.arrayBuffer();
-  const database = new lib.DRW_Database();
-  const handler = new lib.DRW_FileHandler();
-  handler.database = database;
-  const ok = handler.fileImport(buf, database, false, false);
-  if (!ok) { database.delete(); handler.delete(); throw new Error("libdxfrw: не вдалось прочитати DWG"); }
-  return { lib, database, handler };
-}
-
-async function dwgToDxfText(file) {
-  const { lib, database, handler } = await dwgLoadDatabase(file);
-  const dxf = handler.fileExport(lib.DRW_Version.AC1021, false, database, false);
-  database.delete();
-  handler.delete();
-  return dxf;
-}
-
-async function dwgRenderToCanvas(file) {
-  const { lib, database, handler } = await dwgLoadDatabase(file).catch(e => { console.warn(`[DWG render load] ${file.name}: ${e.message}`, e); throw e; });
-  try {
-    const mBlock = database.mBlock;
-    if (!mBlock) throw new Error("mBlock not found");
-    const entities = mBlock.entities;
-    const ET = lib.DRW_ETYPE;
-
-    // Safe enum values for entity types that may not exist in all builds
-    const EV = {
-      LINE:       ET.LINE?.value       ?? -1,
-      ARC:        ET.ARC?.value        ?? -2,
-      CIRCLE:     ET.CIRCLE?.value     ?? -3,
-      LWPOLYLINE: ET.LWPOLYLINE?.value ?? -4,
-      POLYLINE:   ET.POLYLINE?.value   ?? -5,
-      SPLINE:     ET.SPLINE?.value     ?? -6,
-      TEXT:       ET.TEXT?.value       ?? -7,
-      MTEXT:      ET.MTEXT?.value      ?? -8,
-      DIMENSION:  ET.DIMENSION?.value  ?? -9,
-    };
-
-    // Layer → color heuristic
-    const layerColor = name => {
-      const n = (name || "").toLowerCase();
-      if (/wall|стін|перег|кімн|кімната|room/.test(n)) return "#111";
-      if (/dim|розмір|размер|measure|quote/.test(n)) return "#2471a3";
-      if (/furn|мебл|мебель|меблі/.test(n)) return "#7d3c98";
-      if (/door|двер|окн|вікн|window/.test(n)) return "#555";
-      if (/text|надп|label|annot/.test(n)) return "#333";
-      if (/axis|вісь|ось|grid/.test(n)) return "#aaa";
-      return "#222";
-    };
-
-    const n = entities.size();
-
-    // Bounding box — include all entity types
-    let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
-    const expand = (x, y) => {
-      if (isFinite(x) && isFinite(y)) {
-        if (x < minX) minX = x; if (x > maxX) maxX = x;
-        if (y < minY) minY = y; if (y > maxY) maxY = y;
-      }
-    };
-    for (let i = 0; i < n; i++) {
-      try {
-        const e = entities.get(i); const t = e.eType.value;
-        if (t === EV.LINE) { expand(e.basePoint.x, e.basePoint.y); expand(e.secPoint.x, e.secPoint.y); }
-        else if (t === EV.ARC || t === EV.CIRCLE) { expand(e.basePoint.x - e.radius, e.basePoint.y - e.radius); expand(e.basePoint.x + e.radius, e.basePoint.y + e.radius); }
-        else if (t === EV.LWPOLYLINE) { const vl = e.getVertexList(); for (let j = 0; j < vl.size(); j++) { const v = vl.get(j); expand(v.x, v.y); } }
-        else if (t === EV.POLYLINE) { const vl = e.getVertexList(); for (let j = 0; j < vl.size(); j++) { expand(vl.get(j).basePoint.x, vl.get(j).basePoint.y); } }
-        else if (t === EV.SPLINE) { try { const cp = e.getControlList(); for (let j = 0; j < cp.size(); j++) { expand(cp.get(j).x, cp.get(j).y); } } catch {} }
-        else if (t === EV.TEXT || t === EV.MTEXT) { try { expand(e.basePoint.x, e.basePoint.y); } catch {} }
-        else if (t === EV.DIMENSION) { try { expand(e.basePoint.x, e.basePoint.y); try { expand(e.defPoint.x, e.defPoint.y); } catch {} try { expand(e.textPoint.x, e.textPoint.y); } catch {} } catch {} }
-      } catch {}
+function renderDwgToCanvas(entities) {
+  let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+  const expand = (x, y) => {
+    if (isFinite(x) && isFinite(y)) {
+      if (x < minX) minX = x; if (x > maxX) maxX = x;
+      if (y < minY) minY = y; if (y > maxY) maxY = y;
     }
-
-    if (!isFinite(minX)) throw new Error("No renderable geometry");
-
-    const W = 2048, H = 2048, PAD = 56;
-    const dw = maxX - minX || 1, dh = maxY - minY || 1;
-    const scale = Math.min((W - PAD * 2) / dw, (H - PAD * 2) / dh);
-    const tx = x => PAD + (x - minX) * scale;
-    const ty = y => H - PAD - (y - minY) * scale;
-
-    const canvas = document.createElement("canvas");
-    canvas.width = W; canvas.height = H;
-    const ctx = canvas.getContext("2d");
-    ctx.fillStyle = "#fafafa"; ctx.fillRect(0, 0, W, H);
-
-    // Draw pass 1 — geometry (lines, arcs, polylines, splines)
-    for (let i = 0; i < n; i++) {
-      try {
-        const e = entities.get(i); const t = e.eType.value;
-        let layer = ""; try { layer = e.layer || ""; } catch {}
-        ctx.strokeStyle = layerColor(layer);
-        ctx.lineWidth = /wall|стін|перег/.test((layer || "").toLowerCase()) ? 2 : 1;
-        ctx.beginPath();
-
-        if (t === EV.LINE) {
-          ctx.moveTo(tx(e.basePoint.x), ty(e.basePoint.y));
-          ctx.lineTo(tx(e.secPoint.x), ty(e.secPoint.y));
-          ctx.stroke();
-        } else if (t === EV.CIRCLE) {
-          ctx.arc(tx(e.basePoint.x), ty(e.basePoint.y), e.radius * scale, 0, Math.PI * 2);
-          ctx.stroke();
-        } else if (t === EV.ARC) {
-          const cx = tx(e.basePoint.x), cy = ty(e.basePoint.y), r = e.radius * scale;
-          ctx.arc(cx, cy, r, -e.startAngle * Math.PI / 180, -e.endAngle * Math.PI / 180, true);
-          ctx.stroke();
-        } else if (t === EV.LWPOLYLINE) {
-          const vl = e.getVertexList(); const sz = vl.size();
-          if (sz === 0) continue;
-          const closed = (e.flags & 1) !== 0;
-          ctx.moveTo(tx(vl.get(0).x), ty(vl.get(0).y));
-          for (let j = 0; j < sz; j++) {
-            const v = vl.get(j), vn = vl.get((j + 1) % sz);
-            if (!vn || (!closed && j === sz - 1)) continue;
-            if (v.bulge !== 0) {
-              const x1 = tx(v.x), y1 = ty(v.y), x2 = tx(vn.x), y2 = ty(vn.y);
-              const b = v.bulge, d = Math.sqrt((x2 - x1) ** 2 + (y2 - y1) ** 2);
-              const r = Math.abs(d * (b * b + 1) / (4 * Math.abs(b)));
-              const a = Math.atan2(y2 - y1, x2 - x1) - Math.PI / 2 * Math.sign(b);
-              const mx = (x1 + x2) / 2 + (r - d * Math.abs(b) / 2) * Math.cos(a) * Math.sign(b);
-              const my = (y1 + y2) / 2 + (r - d * Math.abs(b) / 2) * Math.sin(a) * Math.sign(b);
-              ctx.arc(mx, my, r, Math.atan2(y1 - my, x1 - mx), Math.atan2(y2 - my, x2 - mx), b < 0);
-            } else { ctx.lineTo(tx(vn.x), ty(vn.y)); }
-          }
-          if (closed) ctx.closePath();
-          ctx.stroke();
-        } else if (t === EV.POLYLINE) {
-          const vl = e.getVertexList(); const sz = vl.size();
-          if (sz === 0) continue;
-          ctx.moveTo(tx(vl.get(0).basePoint.x), ty(vl.get(0).basePoint.y));
-          for (let j = 1; j < sz; j++) ctx.lineTo(tx(vl.get(j).basePoint.x), ty(vl.get(j).basePoint.y));
-          if (e.flags & 1) ctx.closePath();
-          ctx.stroke();
-        } else if (t === EV.SPLINE) {
-          try {
-            const cp = e.getControlList(); const sz = cp.size();
-            if (sz >= 2) {
-              ctx.moveTo(tx(cp.get(0).x), ty(cp.get(0).y));
-              for (let j = 1; j < sz; j++) ctx.lineTo(tx(cp.get(j).x), ty(cp.get(j).y));
-              ctx.stroke();
-            }
-          } catch {}
-        } else if (t === EV.DIMENSION) {
-          try {
-            ctx.strokeStyle = "#2471a3";
-            ctx.lineWidth = 1;
-            // dimension line: basePoint → defPoint
-            const bx = tx(e.basePoint.x), by = ty(e.basePoint.y);
-            let dx = bx, dy = by;
-            try { dx = tx(e.defPoint.x); dy = ty(e.defPoint.y); } catch {}
-            ctx.beginPath(); ctx.moveTo(bx, by); ctx.lineTo(dx, dy); ctx.stroke();
-            // arrows at endpoints
-            const drawArrow = (x1, y1, x2, y2) => {
-              const angle = Math.atan2(y2 - y1, x2 - x1);
-              const aLen = 8;
-              ctx.beginPath();
-              ctx.moveTo(x1, y1);
-              ctx.lineTo(x1 + aLen * Math.cos(angle + 2.8), y1 + aLen * Math.sin(angle + 2.8));
-              ctx.moveTo(x1, y1);
-              ctx.lineTo(x1 + aLen * Math.cos(angle - 2.8), y1 + aLen * Math.sin(angle - 2.8));
-              ctx.stroke();
-            };
-            drawArrow(bx, by, dx, dy);
-            drawArrow(dx, dy, bx, by);
-          } catch {}
-        }
-      } catch {}
-    }
-
-    // Draw pass 2 — text labels and dimension values on top
-    for (let i = 0; i < n; i++) {
-      try {
-        const e = entities.get(i); const t = e.eType.value;
-        if (t === EV.TEXT || t === EV.MTEXT) {
-          const px = tx(e.basePoint.x), py = ty(e.basePoint.y);
-          let txt = ""; try { txt = (e.text || "").replace(/\\[^;]+;/g, "").trim(); } catch {}
-          if (!txt) continue;
-          const fh = Math.max(9, Math.min((e.height || 200) * scale, 28));
-          ctx.font = `${fh}px sans-serif`;
-          ctx.fillStyle = "#1a1a1a";
-          ctx.fillText(txt.slice(0, 60), px, py);
-        } else if (t === EV.DIMENSION) {
-          try {
-            let txt = ""; try { txt = (e.text || "").replace(/\\[^;]+;/g, "").trim(); } catch {}
-            // textPoint is where the dimension value sits; fallback to midpoint of dim line
-            let tpx, tpy;
-            try { tpx = tx(e.textPoint.x); tpy = ty(e.textPoint.y); } catch {
-              tpx = (tx(e.basePoint.x) + (e.defPoint ? tx(e.defPoint.x) : tx(e.basePoint.x))) / 2;
-              tpy = (ty(e.basePoint.y) + (e.defPoint ? ty(e.defPoint.y) : ty(e.basePoint.y))) / 2 - 6;
-            }
-            if (txt) {
-              ctx.font = "10px sans-serif";
-              ctx.fillStyle = "#2471a3";
-              const tw = ctx.measureText(txt).width;
-              ctx.fillStyle = "rgba(250,250,250,0.75)";
-              ctx.fillRect(tpx - tw / 2 - 2, tpy - 10, tw + 4, 13);
-              ctx.fillStyle = "#2471a3";
-              ctx.fillText(txt.slice(0, 20), tpx - tw / 2, tpy);
-            }
-          } catch {}
-        }
-      } catch {}
-    }
-
-    return canvas.toDataURL("image/jpeg", 0.88);
-  } finally {
-    database.delete();
-    handler.delete();
+  };
+  for (const e of entities) {
+    try {
+      if (e.type === "LINE") { expand(e.startPoint.x, e.startPoint.y); expand(e.endPoint.x, e.endPoint.y); }
+      else if (e.type === "ARC" || e.type === "CIRCLE") { expand(e.center.x - e.radius, e.center.y - e.radius); expand(e.center.x + e.radius, e.center.y + e.radius); }
+      else if (e.type === "LWPOLYLINE") { e.vertices?.forEach(v => expand(v.x, v.y)); }
+      else if (e.type === "TEXT") { expand(e.startPoint?.x, e.startPoint?.y); }
+      else if (e.type === "MTEXT") { expand(e.insertionPoint?.x, e.insertionPoint?.y); }
+    } catch {}
   }
+  if (!isFinite(minX)) return null;
+
+  const W = 2048, H = 2048, PAD = 56;
+  const scale = Math.min((W - PAD * 2) / (maxX - minX || 1), (H - PAD * 2) / (maxY - minY || 1));
+  const tx = x => PAD + (x - minX) * scale;
+  const ty = y => H - PAD - (y - minY) * scale;
+
+  const canvas = document.createElement("canvas");
+  canvas.width = W; canvas.height = H;
+  const ctx = canvas.getContext("2d");
+  ctx.fillStyle = "#0a1929"; ctx.fillRect(0, 0, W, H);
+  ctx.strokeStyle = "#7ec8e3"; ctx.lineWidth = 1.2; ctx.lineCap = "round";
+
+  for (const e of entities) {
+    try {
+      ctx.beginPath();
+      if (e.type === "LINE") {
+        ctx.moveTo(tx(e.startPoint.x), ty(e.startPoint.y));
+        ctx.lineTo(tx(e.endPoint.x), ty(e.endPoint.y));
+        ctx.stroke();
+      } else if (e.type === "CIRCLE") {
+        ctx.arc(tx(e.center.x), ty(e.center.y), Math.abs(e.radius * scale), 0, Math.PI * 2);
+        ctx.stroke();
+      } else if (e.type === "ARC") {
+        ctx.arc(tx(e.center.x), ty(e.center.y), Math.abs(e.radius * scale),
+          -e.endAngle * Math.PI / 180, -e.startAngle * Math.PI / 180, false);
+        ctx.stroke();
+      } else if (e.type === "LWPOLYLINE" && e.vertices?.length > 0) {
+        ctx.moveTo(tx(e.vertices[0].x), ty(e.vertices[0].y));
+        for (let j = 1; j < e.vertices.length; j++) ctx.lineTo(tx(e.vertices[j].x), ty(e.vertices[j].y));
+        if (e.flag & 1) ctx.closePath();
+        ctx.stroke();
+      } else if (e.type === "TEXT" && e.text) {
+        ctx.fillStyle = "#fff";
+        ctx.font = `${Math.max(8, Math.min((e.textHeight || 1) * scale * 0.8, 24))}px monospace`;
+        ctx.fillText(e.text.slice(0, 60), tx(e.startPoint?.x || 0), ty(e.startPoint?.y || 0));
+      } else if (e.type === "MTEXT" && e.text) {
+        const clean = e.text.replace(/\\[a-zA-Z0-9.;|]+;?/g, "").replace(/[{}]/g, "").trim();
+        if (clean) {
+          ctx.fillStyle = "#ffeb80";
+          ctx.font = `${Math.max(8, Math.min((e.textHeight || 1) * scale * 0.8, 24))}px monospace`;
+          ctx.fillText(clean.slice(0, 60), tx(e.insertionPoint?.x || 0), ty(e.insertionPoint?.y || 0));
+        }
+      }
+    } catch {}
+  }
+  return canvas.toDataURL("image/jpeg", 0.85);
 }
 
-async function parseDWGBinary(file) {
+async function parseDWG(file) {
   try {
-    const dxfText = await dwgToDxfText(file);
-    const parsed = parseDXF(dxfText);
-    return `=== DWG→DXF: ${file.name} ===\n${parsed}`;
+    const libredwg = await loadLibreDwg();
+    const buf = await file.arrayBuffer();
+    const dwg = libredwg.dwg_read_data(buf, Dwg_File_Type.DWG);
+    const db = libredwg.convert(dwg);
+    libredwg.dwg_free(dwg);
+
+    const entities = db.entities || [];
+    const texts = [], layers = new Set(), entityCounts = {};
+
+    for (const e of entities) {
+      entityCounts[e.type] = (entityCounts[e.type] || 0) + 1;
+      if (e.layer) layers.add(e.layer);
+      if (e.type === "TEXT" && e.text?.trim()) {
+        texts.push(e.text.trim());
+      } else if (e.type === "MTEXT" && e.text) {
+        const clean = e.text.replace(/\\[a-zA-Z0-9.;|]+;?/g, "").replace(/[{}]/g, "").trim();
+        if (clean) texts.push(clean);
+      } else if (e.type === "ATTDEF" && e.text?.trim()) {
+        texts.push(e.text.trim());
+      }
+    }
+
+    const uniqueTexts = [...new Set(texts)].slice(0, 120);
+    const layerList = [...layers].filter(l => l && l !== "0").slice(0, 40);
+
+    let textContent = `=== DWG: ${file.name} ===\n`;
+    if (layerList.length) textContent += `ШАРИ: ${layerList.join(", ")}\n`;
+    if (Object.keys(entityCounts).length) textContent += `ЕЛЕМЕНТИ: ${Object.entries(entityCounts).map(([k, v]) => `${k}×${v}`).join(", ")}\n`;
+    if (uniqueTexts.length) textContent += `ПІДПИСИ:\n${uniqueTexts.map(t => "  • " + t).join("\n")}\n`;
+
+    const preview = renderDwgToCanvas(entities);
+    const pages = preview ? [{ b64: preview.split(",")[1], preview }] : [];
+    return { pages, type: "dwg", filename: file.name, ext: "DWG", textContent };
   } catch (e) {
-    console.warn(`[DWG text] ${file.name}: ${e.message}`, e);
-    const isFormatErr = e.message?.includes("не вдалось прочитати") || e.message?.includes("format");
-    const hint = isFormatErr
-      ? "Формат DWG не підтримується браузерним парсером. Відкрийте файл в AutoCAD/BricsCAD та збережіть як DXF."
-      : `Помилка: ${e.message}`;
-    return `=== DWG ФАЙЛ: ${file.name} ===\n⚠️ ${hint}`;
+    console.warn(`[DWG] ${file.name}:`, e);
+    return { pages: [], type: "dwg", filename: file.name, ext: "DWG", textContent: `[помилка читання DWG: ${e.message}]` };
   }
 }
 
@@ -446,16 +316,9 @@ async function processFile(file, onProg, sig) {
   }
   if (nm.endsWith(".dwg")) {
     onProg?.(10);
-    const [textResult, canvasResult] = await Promise.allSettled([
-      parseDWGBinary(file),
-      dwgRenderToCanvas(file),
-    ]);
+    const result = await parseDWG(file);
     onProg?.(100);
-    const textContent = textResult.status === "fulfilled" ? textResult.value : "[помилка читання DWG]";
-    const rawCanvas = canvasResult.status === "fulfilled" ? canvasResult.value : null;
-    const b64 = rawCanvas?.includes(",") ? rawCanvas.split(",")[1] : null;
-    const pages = b64 ? [{ b64, preview: rawCanvas }] : [];
-    return { pages, type: "dwg", filename: file.name, ext: "DWG", textContent };
+    return result;
   }
   if (nm.endsWith(".xlsx") || nm.endsWith(".xls") || nm.endsWith(".csv")) {
     onProg?.(30);
@@ -848,22 +711,25 @@ function UploadBox({ label, files, onAdd, onRemove, onUpdateFile, color = "#888"
                   })()}
                   {!f._loading && <button onClick={() => onRemove(i)} style={{ position: "absolute", top: -5, right: -5, width: 16, height: 16, background: "#e74c3c", color: "#fff", border: "none", borderRadius: "50%", cursor: "pointer", fontSize: 10, display: "flex", alignItems: "center", justifyContent: "center" }}>×</button>}
                 </div>
-                {/* Category badge */}
-                {f._classifying && <div style={{ fontSize: 7, color: "#bbb", fontFamily: "monospace", animation: "pulse 1s infinite" }}>…</div>}
-                {!f._classifying && f._category && (
-                  <div style={{ fontSize: 7, fontFamily: "monospace", fontWeight: 700, color: "#fff", background: CATEGORY_COLOR[f._category] || "#999", padding: "2px 5px", borderRadius: 3, letterSpacing: "0.05em", maxWidth: 70, textAlign: "center", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}
-                    title={f._category}>
-                    {CATEGORY_SHORT[f._category] || f._category}
-                    {f._confidence === "low" && <span style={{ opacity: 0.6 }}>?</span>}
+                {/* File format badge — not shown for PDF (has its own X/Y badge) */}
+                {f.ext && f.type !== "pdf" && (
+                  <div style={{ fontSize: 7, fontFamily: "monospace", fontWeight: 700,
+                    color: f._error ? "#fff" : f._done ? "#fff" : "#555",
+                    background: f._error ? "#e74c3c" : f._done ? "#27ae60" : "#eee",
+                    padding: "2px 5px", borderRadius: 3, letterSpacing: "0.08em", maxWidth: 70, textAlign: "center" }}>
+                    {f.ext}
                   </div>
                 )}
                 {!f._loading && f.type === "pdf" && f.pages?.length > 0 && (() => {
                   const textPages = f.pages.filter(p => p.text).length;
                   const total = f.pages.length;
+                  const isScan = textPages === 0;
                   return (
-                    <div style={{ fontSize: 7, fontFamily: "monospace", color: textPages > 0 ? "#27ae60" : "#e67e22", background: textPages > 0 ? "#f0fff4" : "#fff8f0", border: `1px solid ${textPages > 0 ? "#2ecc7144" : "#e67e2244"}`, padding: "1px 4px", borderRadius: 2 }}
-                      title={textPages > 0 ? `${textPages} з ${total} сторінок мають текстовий шар` : "Скан — тільки зображення"}>
-                      {textPages > 0 ? `T ${textPages}/${total}` : "скан"}
+                    <div style={{ fontSize: 7, fontFamily: "monospace", fontWeight: 700,
+                      color: "#fff", background: "#27ae60",
+                      padding: "2px 5px", borderRadius: 3, letterSpacing: "0.08em", maxWidth: 70, textAlign: "center" }}
+                      title={isScan ? `Сканований PDF — розбір через зображення (${total} стор.)` : `Текстовий PDF — ${textPages} з ${total} сторінок мають текст`}>
+                      {`PDF ${total}`}
                     </div>
                   );
                 })()}
@@ -877,6 +743,32 @@ function UploadBox({ label, files, onAdd, onRemove, onUpdateFile, color = "#888"
         </div>
         {!drag && <div style={{ fontSize: 8, color: "#ccc", fontFamily: "monospace", textAlign: "center", marginTop: 4 }}>↑ або перетягніть</div>}
       </div>
+      {files.length > 0 && (
+        <div style={{ marginTop: 8, borderRadius: 6, border: "1px solid #e8e8e8", overflow: "hidden", fontSize: 10, fontFamily: "monospace" }}>
+          {files.map((f, i) => {
+            const isLoading = f._loading;
+            const isError = !isLoading && f._error;
+            const isPdfScan = !isLoading && !isError && f.type === "pdf" && f.pages?.length > 0 && f.pages.filter(p => p.text).length === 0;
+            const isOk = !isLoading && !isError && f._done;
+            const bg = isError ? "#fff5f5" : isOk ? "#f5fff8" : "#fafafa";
+            const dot = isLoading ? "⏳" : isError ? "✕" : isOk ? "✓" : "·";
+            const dotColor = isError ? "#e74c3c" : isOk ? "#27ae60" : "#aaa";
+            let msg = "";
+            if (isLoading) msg = "обробляється...";
+            else if (isError) msg = f._error.length > 60 ? f._error.slice(0, 60) + "…" : f._error;
+            else if (isPdfScan) msg = "готовий до аналізу";
+            else if (isOk) msg = "готовий до аналізу";
+            const shortName = f.filename?.length > 30 ? f.filename.slice(0, 28) + "…" : f.filename;
+            return (
+              <div key={f._id || i} style={{ display: "flex", alignItems: "center", gap: 6, padding: "5px 10px", background: bg, borderBottom: i < files.length - 1 ? "1px solid #f0f0f0" : "none" }}>
+                <span style={{ color: dotColor, fontWeight: 700, fontSize: 11, width: 12, textAlign: "center", flexShrink: 0 }}>{dot}</span>
+                <span style={{ color: "#444", flex: "0 0 auto", maxWidth: 160, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{shortName}</span>
+                <span style={{ color: isError || isPdfScan ? "#e74c3c" : isOk ? "#27ae60" : "#aaa", flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{msg}</span>
+              </div>
+            );
+          })}
+        </div>
+      )}
       <input ref={inputRef} type="file" accept="*/*" multiple style={{ display: "none" }} onChange={e => { Array.from(e.target.files).forEach(onAdd); e.target.value = ""; }} />
       {galleryFile && onUpdateFile && (
         <PageGallery
@@ -956,6 +848,63 @@ function filesToParts(files, fallbackLabel) {
     });
   });
   return parts;
+}
+
+// ─── PDF chunked pre-extraction ───────────────────────────────────────────────
+const PDF_CHUNK_SIZE = 12;
+const PDF_DIRECT_LIMIT = 15;
+
+async function preExtractPageBatch(pages, fileLabel, apiKey) {
+  const parts = [{ type: "text", text:
+    `Ти аналізуєш сторінки PDF "${fileLabel}" для проекту 3D-візуалізації.\n` +
+    `Витягни ВСЕ що є на кожній сторінці: меблі, матеріали, кольори, розміри, стиль, URL-посилання, коментарі клієнта, технічні вимоги, позначення на кресленнях.\n` +
+    `Формат відповіді — по одному рядку на знахідку, з номером сторінки: "[стор.N] знахідка".\n` +
+    `Не пропускай нічого. Без JSON, без вступу.`
+  }];
+  for (const pg of pages) {
+    parts.push({ type: "text", text: `=== СТОРІНКА ${pg.pageNum} ===` });
+    if (pg.text) parts.push({ type: "text", text: pg.text });
+    if (pg.b64) parts.push({ type: "image", source: { type: "base64", media_type: pg.mediaType || "image/jpeg", data: pg.b64 } });
+  }
+  const resp = await fetch("https://api.anthropic.com/v1/messages", {
+    method: "POST",
+    headers: { "Content-Type": "application/json", "anthropic-version": "2023-06-01", "anthropic-dangerous-direct-browser-access": "true", "x-api-key": apiKey },
+    body: JSON.stringify({ model: "claude-haiku-4-5-20251001", max_tokens: 3000, temperature: 0, messages: [{ role: "user", content: parts }] })
+  });
+  const data = await resp.json();
+  if (!resp.ok) throw new Error(`Haiku ${resp.status}: ${data?.error?.message || ""}`);
+  return (data.content || []).map(b => b.text || "").join("");
+}
+
+async function preProcessLargeFiles(files, apiKey, onStatus) {
+  const result = [];
+  for (const f of files) {
+    const activePgs = (f.pages || []).filter(p => p.b64 && p._selected !== false);
+    if (activePgs.length <= PDF_DIRECT_LIMIT) { result.push(f); continue; }
+
+    const label = f._label || f.filename;
+    const chunks = [];
+    for (let i = 0; i < activePgs.length; i += PDF_CHUNK_SIZE)
+      chunks.push(activePgs.slice(i, i + PDF_CHUNK_SIZE));
+
+    const extractedParts = [];
+    for (let ci = 0; ci < chunks.length; ci++) {
+      const first = chunks[ci][0].pageNum;
+      const last = chunks[ci][chunks[ci].length - 1].pageNum;
+      onStatus?.(`"${f.filename}" — пачка ${ci + 1}/${chunks.length} (стор. ${first}–${last})…`);
+      const text = await preExtractPageBatch(chunks[ci], label, apiKey);
+      extractedParts.push(text);
+    }
+
+    // 3 sample pages: first, middle, last
+    const n = activePgs.length;
+    const sampleIdxs = [...new Set([0, Math.floor(n / 2), n - 1])];
+    const samplePages = sampleIdxs.map(i => activePgs[i]);
+
+    const extractedText = `=== Витягнутий зміст "${label}" (${n} стор.) ===\n` + extractedParts.join("\n");
+    result.push({ ...f, textContent: (f.textContent ? f.textContent + "\n\n" : "") + extractedText, pages: samplePages, _preExtracted: true, _totalPages: n });
+  }
+  return result;
 }
 
 // ─── SOW Templates ────────────────────────────────────────────────────────────
@@ -1449,12 +1398,13 @@ const SOURCE_TYPE_COLOR = {
 };
 const SOURCE_FILE_ICO = { pdf: "📄", dwg: "📐", dxf: "📐", excel: "📊", text: "📝", image: "🖼️" };
 
-function TzReviewStep({ projectType, rooms, tzByRoom, sowMissing, sowUnclear, deliverySpec, sowCoverage, buildingCoverage, clientComments, annotation, conflicts, roadmap, sources, files, sourceTags, onSourceTag, onEdit, onRemove, onBack, onSearchLinks, searchingLinks, linkSearchProgress, clientTranslation, buildingClientTranslation, onBuildClientTranslation }) {
+function TzReviewStep({ projectType, rooms, tzByRoom, sowMissing, sowUnclear, deliverySpec, sowCoverage, buildingCoverage, clientComments, annotation, conflicts, roadmap, sources, files, sourceTags, onSourceTag, onEdit, onRemove, onBack, clientTranslation, buildingClientTranslation, onBuildClientTranslation }) {
   const allRooms = rooms?.length ? ["Загальне", ...rooms.filter(r => r !== "Загальне")] : ["Загальне"];
-  const [viewMode, setViewMode] = useState("rooms"); // "rooms" | "stages" | "table" | "report"
-  const [reportMode, setReportMode] = useState("pm"); // "pm" | "client"
+  const [viewMode, setViewMode] = useState("rooms"); // kept for legacy code below
+  const [reportMode, setReportMode] = useState("pm");
   const [activeRoom, setActiveRoom] = useState(allRooms[0]);
   const [activeStage, setActiveStage] = useState(PRODUCTION_STAGES[0]);
+  const [sowPage, setSowPage] = useState("sowa"); // "sowa" | "niq"
   const [lightbox, setLightbox] = useState(null); // { imgRef, itemText }
   const [docViewer, setDocViewer] = useState(null); // { source, pageNum }
   const [tableFilter, setTableFilter] = useState({ type: "", room: "", stage: "", search: "" });
@@ -1692,20 +1642,12 @@ function TzReviewStep({ projectType, rooms, tzByRoom, sowMissing, sowUnclear, de
             Запит ({(sowMissing?.length || 0) + (sowUnclear?.length || 0)})
           </button>
         )}
-        {onSearchLinks && (
-          <button onClick={onSearchLinks} disabled={searchingLinks}
-            style={{ fontSize: 9, fontFamily: "monospace", background: searchingLinks ? "#1a3a1a" : "#1a2a1a", border: `1px solid ${searchingLinks ? "#27ae60" : "#27ae60"}`, color: "#27ae60", padding: "3px 10px", borderRadius: 4, cursor: searchingLinks ? "not-allowed" : "pointer", display: "flex", alignItems: "center", gap: 5 }}>
-            {searchingLinks
-              ? <>⏳ {linkSearchProgress.done}/{linkSearchProgress.total}</>
-              : <>🔗 Посилання</>}
-          </button>
-        )}
         <button onClick={exportPdf} style={{ fontSize: 9, fontFamily: "monospace", background: "none", border: "1px solid #333", color: "#666", padding: "3px 10px", borderRadius: 4, cursor: "pointer" }}>PDF</button>
         <button onClick={exportExcel} style={{ fontSize: 9, fontFamily: "monospace", background: "none", border: "1px solid #2ecc71", color: "#2ecc71", padding: "3px 10px", borderRadius: 4, cursor: "pointer" }}>XLS</button>
         <button onClick={copyMd} style={{ fontSize: 9, fontFamily: "monospace", background: "none", border: "1px solid #333", color: "#666", padding: "3px 10px", borderRadius: 4, cursor: "pointer" }}>MD</button>
       </div>
 
-      {viewMode === "table" && (
+      {false && viewMode === "table" && (
         <div style={{ flex: 1, overflow: "auto", padding: "16px 20px", background: "#f5f4f1" }}>
           {/* Filter bar */}
           <div style={{ display: "flex", gap: 8, marginBottom: 12, flexWrap: "wrap", alignItems: "center" }}>
@@ -1824,7 +1766,7 @@ function TzReviewStep({ projectType, rooms, tzByRoom, sowMissing, sowUnclear, de
         </div>
       )}
 
-      {viewMode === "report" && (() => {
+      {false && viewMode === "report" && (() => {
         const isClient = reportMode === "client";
         const cSpec   = isClient && clientTranslation ? clientTranslation.deliverySpec : deliverySpec;
         const cQ      = isClient && clientTranslation ? clientTranslation.questions    : [...(sowMissing||[]), ...(sowUnclear||[])];
@@ -1835,6 +1777,8 @@ function TzReviewStep({ projectType, rooms, tzByRoom, sowMissing, sowUnclear, de
         <div style={{ flex: 1, overflow: "auto", padding: "16px 20px", background: "#f5f4f1" }}>
           {/* Toggle ПМ / Клієнт */}
           <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 20 }}>
+            <button onClick={() => setViewMode("rooms")} style={{ fontSize: 9, fontFamily: "monospace", padding: "4px 10px", border: "1px solid #ddd", borderRadius: 4, cursor: "pointer", background: "#fff", color: "#555" }}>← Розбір</button>
+            <div style={{ width: 1, height: 16, background: "#e0e0e0", margin: "0 4px" }} />
             <button onClick={() => setReportMode("pm")} style={{ fontSize: 9, fontFamily: "monospace", padding: "4px 14px", border: "none", borderRadius: 4, cursor: "pointer", background: !isClient ? "#1a1a1a" : "#e8e6e2", color: !isClient ? "#fff" : "#888", fontWeight: !isClient ? 700 : 400 }}>ПМ</button>
             <button onClick={() => { setReportMode("client"); onBuildClientTranslation?.(); }} style={{ fontSize: 9, fontFamily: "monospace", padding: "4px 14px", border: "none", borderRadius: 4, cursor: "pointer", background: isClient ? "#2980b9" : "#e8e6e2", color: isClient ? "#fff" : "#888", fontWeight: isClient ? 700 : 400 }}>Клієнт</button>
             <span style={{ fontSize: 9, fontFamily: "monospace", color: "#bbb", marginLeft: 4 }}>
@@ -1963,8 +1907,102 @@ function TzReviewStep({ projectType, rooms, tzByRoom, sowMissing, sowUnclear, de
         );
       })()}
 
-      <div style={{ flex: 1, overflow: "hidden", display: (viewMode === "table" || viewMode === "report") ? "none" : "flex" }}>
-        {/* Ліва панель */}
+      {/* ── SOWa / NIQ tabs ── */}
+      <div style={{ background: "#fff", borderBottom: "1px solid #e8e6e1", display: "flex", padding: "0 20px", flexShrink: 0 }}>
+        {[["sowa", `SOWa · ${totalItems}`], ["niq", `NIQ · ${(sowMissing?.length || 0) + (sowUnclear?.length || 0) + (conflicts?.length || 0)}`]].map(([id, label]) => (
+          <button key={id} onClick={() => setSowPage(id)} style={{ fontSize: 10, fontFamily: "monospace", fontWeight: 700, letterSpacing: "0.08em", padding: "10px 18px", border: "none", borderBottom: sowPage === id ? "2px solid #1a1a1a" : "2px solid transparent", background: "transparent", cursor: "pointer", color: sowPage === id ? "#1a1a1a" : "#aaa" }}>{label.toUpperCase()}</button>
+        ))}
+      </div>
+
+      {/* ── Main scrollable area ── */}
+      <div style={{ flex: 1, overflowY: "auto", padding: "20px 24px", background: "#f5f4f1" }}>
+
+        {/* ── SOWa ── */}
+        {sowPage === "sowa" && (() => {
+          const CATS = ["Матеріали та текстури", "Меблі та моделі", "Сезон / атмосфера", "Тип освітлення", "Креслення та планування", "Логотип / написи", "Вимоги клієнта", "Специфічні запити"];
+          const byCategory = {};
+          allItems.forEach(item => { const cat = item.category || "Інше"; if (!byCategory[cat]) byCategory[cat] = []; byCategory[cat].push(item); });
+          const sortedCats = [...CATS.filter(c => byCategory[c]), ...Object.keys(byCategory).filter(c => !CATS.includes(c) && byCategory[c])];
+          if (!sortedCats.length) return <div style={{ color: "#bbb", fontFamily: "monospace", fontSize: 11, padding: "24px 0" }}>SOWa ще не побудована — запустіть аналіз</div>;
+          return (
+            <>
+              {annotation && <div style={{ fontSize: 10, color: "#666", marginBottom: 18, padding: "10px 14px", background: "#fff", borderRadius: 6, border: "1px solid #e8e6e1", lineHeight: 1.55 }}>{annotation}</div>}
+              {sortedCats.map(cat => {
+                const items = byCategory[cat] || [];
+                return (
+                  <div key={cat} style={{ marginBottom: 24 }}>
+                    <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 8 }}>
+                      <div style={{ width: 8, height: 8, borderRadius: 2, background: CAT_COLOR[cat] || "#bbb", flexShrink: 0 }} />
+                      <span style={{ fontSize: 9, fontWeight: 700, fontFamily: "monospace", color: "#888", letterSpacing: "0.12em" }}>{cat.toUpperCase()}</span>
+                      <span style={{ fontSize: 9, color: "#ccc", fontFamily: "monospace" }}>{items.length}</span>
+                    </div>
+                    <div style={{ background: "#fff", borderRadius: 6, border: "1px solid #e8e6e1", padding: "2px 12px" }}>
+                      {items.map(item => <TzItem key={item.id} item={item} onEdit={onEdit} onRemove={onRemove}
+                        onOpenRef={(imgRef, itemText) => { const f = imgRef?.filename ? filesByName[imgRef.filename] : null; if (f) openDocViewer(f.filename, imgRef.pageNum, itemText); else setLightbox({ imgRef, itemText }); }}
+                        onOpenDoc={(label, itemText) => openDocByLabel(label, itemText)} />)}
+                    </div>
+                  </div>
+                );
+              })}
+            </>
+          );
+        })()}
+
+        {/* ── NIQ ── */}
+        {sowPage === "niq" && (() => {
+          const niqEmpty = !sowMissing?.length && !sowUnclear?.length && !conflicts?.length;
+          if (niqEmpty) return <div style={{ color: "#27ae60", fontFamily: "monospace", fontSize: 11, padding: "24px 0" }}>✓ Немає питань — ТЗ повне</div>;
+          return (
+            <>
+              {sowMissing?.length > 0 && (
+                <div style={{ marginBottom: 24 }}>
+                  <div style={{ fontSize: 9, fontWeight: 700, fontFamily: "monospace", color: "#e74c3c", letterSpacing: "0.12em", marginBottom: 8 }}>MISSING ({sowMissing.length})</div>
+                  <div style={{ background: "#fff", borderRadius: 6, border: "1px solid #fde8e8", padding: "2px 14px" }}>
+                    {sowMissing.map((m, i) => (
+                      <div key={i} style={{ padding: "9px 0", borderBottom: i < sowMissing.length - 1 ? "1px solid #fde8e8" : "none", display: "flex", gap: 10 }}>
+                        <span style={{ color: "#e74c3c", fontFamily: "monospace", fontSize: 12, flexShrink: 0, marginTop: 1 }}>?</span>
+                        <span style={{ fontSize: 11, color: "#333", lineHeight: 1.55 }}>{m}</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+              {sowUnclear?.length > 0 && (
+                <div style={{ marginBottom: 24 }}>
+                  <div style={{ fontSize: 9, fontWeight: 700, fontFamily: "monospace", color: "#e67e22", letterSpacing: "0.12em", marginBottom: 8 }}>UNCLEAR ({sowUnclear.length})</div>
+                  <div style={{ background: "#fff", borderRadius: 6, border: "1px solid #fff3e0", padding: "2px 14px" }}>
+                    {sowUnclear.map((u, i) => (
+                      <div key={i} style={{ padding: "9px 0", borderBottom: i < sowUnclear.length - 1 ? "1px solid #fff3e0" : "none", display: "flex", gap: 10 }}>
+                        <span style={{ color: "#e67e22", fontFamily: "monospace", fontSize: 12, flexShrink: 0, marginTop: 1 }}>⚠</span>
+                        <span style={{ fontSize: 11, color: "#333", lineHeight: 1.55 }}>{u}</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+              {conflicts?.length > 0 && (
+                <div style={{ marginBottom: 24 }}>
+                  <div style={{ fontSize: 9, fontWeight: 700, fontFamily: "monospace", color: "#c0392b", letterSpacing: "0.12em", marginBottom: 8 }}>CONFLICTS ({conflicts.length})</div>
+                  <div style={{ background: "#fff", borderRadius: 6, border: "1px solid #fde8e8", padding: "2px 14px" }}>
+                    {conflicts.map((c, i) => {
+                      const text = typeof c === "string" ? c : (c.description || c.text || "");
+                      return (
+                        <div key={i} style={{ padding: "9px 0", borderBottom: i < conflicts.length - 1 ? "1px solid #fde8e8" : "none", display: "flex", gap: 10 }}>
+                          <span style={{ color: "#e74c3c", fontFamily: "monospace", fontSize: 12, flexShrink: 0, marginTop: 1 }}>⚡</span>
+                          <span style={{ fontSize: 11, color: "#333", lineHeight: 1.55 }}>{text}</span>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
+            </>
+          );
+        })()}
+      </div>
+
+      {/* ── LEGACY (hidden) ── */}
+      {false && <div style={{ flex: 1, overflow: "hidden", display: "none" }}>
         <div style={{ width: 190, background: "#fff", borderRight: "1px solid #ece9e4", flexShrink: 0, overflowY: "auto", display: "flex", flexDirection: "column" }}>
           {/* Annotation */}
           {annotation && (
@@ -2259,6 +2297,7 @@ function TzReviewStep({ projectType, rooms, tzByRoom, sowMissing, sowUnclear, de
           )}
         </div>
       </div>
+      }
     </div>
   );
 }
@@ -2284,6 +2323,7 @@ export default function App() {
   const [apiKey, setApiKey] = useState(() => { try { return localStorage.getItem("anthropic_api_key") || ""; } catch { return ""; } });
   const [briefText, setBriefText] = useState("");
   const [parsing, setParsing] = useState(false);
+  const [parseStatus, setParseStatus] = useState("");
   const [err, setErr] = useState("");
   const [stage, setStage] = useState("upload"); // "upload" | "review"
 
@@ -2303,9 +2343,6 @@ export default function App() {
   const [tzRoadmap, setTzRoadmap] = useState([]);
   const [tzSources, setTzSources] = useState([]);
   const [tzSourceTags, setTzSourceTags] = useState({}); // { srcId: "furniture" | ... }
-  const [tavilyKey, setTavilyKey] = useState(() => { try { return localStorage.getItem("tavily_api_key") || ""; } catch { return ""; } });
-  const [searchingLinks, setSearchingLinks] = useState(false);
-  const [linkSearchProgress, setLinkSearchProgress] = useState({ done: 0, total: 0 });
 
   const allFilesList = useFileList();
 
@@ -2328,93 +2365,6 @@ export default function App() {
   }, []);
 
   const saveKey = k => { setApiKey(k); try { localStorage.setItem("anthropic_api_key", k); } catch { /* ignore */ } };
-  const saveTavilyKey = k => { setTavilyKey(k); try { localStorage.setItem("tavily_api_key", k); } catch { /* ignore */ } };
-
-  async function searchLinksWithTavily(byRoomOverride) {
-    if (!tavilyKey.trim()) return;
-    const SEARCH_CATS = ["Меблі та моделі", "Матеріали та текстури", "Логотип / написи"];
-    const source = byRoomOverride || tzByRoom;
-    const items = Object.values(source).flatMap(cats => Object.entries(cats)
-      .filter(([cat]) => SEARCH_CATS.includes(cat))
-      .flatMap(([, items]) => items)
-    ).filter(it => !it.links?.length && it.text?.length > 8);
-
-    if (!items.length) return;
-    setSearchingLinks(true);
-    setLinkSearchProgress({ done: 0, total: items.length });
-
-    const getSearchQuery = async (item) => {
-      // If item has an image reference — use Claude Haiku to identify product from image
-      if (item.imgRef?.full || item.imgRef?.preview) {
-        try {
-          const imgData = (item.imgRef.full || item.imgRef.preview).split(",")[1];
-          const mediaType = item.imgRef.full?.startsWith("data:image/png") ? "image/png" : "image/jpeg";
-          const resp = await fetch("https://api.anthropic.com/v1/messages", {
-            method: "POST",
-            headers: { "Content-Type": "application/json", "anthropic-version": "2023-06-01", "anthropic-dangerous-direct-browser-access": "true", "x-api-key": apiKey },
-            body: JSON.stringify({
-              model: "claude-haiku-4-5-20251001",
-              max_tokens: 40,
-              messages: [{ role: "user", content: [
-                { type: "image", source: { type: "base64", media_type: mediaType, data: imgData } },
-                { type: "text", text: `Context: "${item.text}". Identify the specific product. Return ONLY a short search query: brand + model + type, max 7 words, in English. Example: "Minotti Lawrence sofa" or "Flos Aim pendant light"` }
-              ]}]
-            })
-          });
-          if (resp.ok) {
-            const data = await resp.json();
-            const q = data.content?.[0]?.text?.trim();
-            if (q && q.length > 3) return q;
-          }
-        } catch { /* fallback to text */ }
-      }
-      // No image — extract key terms from text (brand + product, skip generic descriptors)
-      const text = item.text;
-      const brandMatch = text.match(/[A-Z][a-zA-Z]+(?:\s+[A-Z][a-zA-Z]+)*/g);
-      const brandQuery = brandMatch?.slice(0, 3).join(" ");
-      const catKeyword = {
-        "Меблі та моделі": "furniture",
-        "Матеріали та текстури": "material",
-        "Логотип / написи": "logo brand",
-      }[item.category] || "";
-      return [brandQuery || text.slice(0, 60), catKeyword].filter(Boolean).join(" ");
-    };
-
-    let done = 0;
-    await Promise.all(items.map(async item => {
-      try {
-        const query = await getSearchQuery(item);
-        const resp = await fetch("https://api.tavily.com/search", {
-          method: "POST",
-          headers: { "Content-Type": "application/json", "Authorization": `Bearer ${tavilyKey}` },
-          body: JSON.stringify({ query, search_depth: "basic", max_results: 3 }),
-        });
-        if (resp.ok) {
-          const data = await resp.json();
-          const links = (data.results || []).slice(0, 3).map(r => ({
-            url: r.url,
-            label: r.title?.slice(0, 50) || r.url.replace(/^https?:\/\//, "").slice(0, 40),
-            type: "product",
-            query,
-          }));
-          if (links.length) {
-            setTzByRoom(prev => {
-              const next = {};
-              Object.entries(prev).forEach(([room, cats]) => {
-                next[room] = {};
-                Object.entries(cats).forEach(([cat, catItems]) => {
-                  next[room][cat] = catItems.map(it => it.id === item.id ? { ...it, links } : it);
-                });
-              });
-              return next;
-            });
-          }
-        }
-      } catch { /* skip */ }
-      setLinkSearchProgress(prev => ({ done: prev.done + 1, total: items.length }));
-    }));
-    setSearchingLinks(false);
-  }
 
   async function buildSowCoverage(projectType, byRoom, key) {
     const template = SOW_TEMPLATES[projectType];
@@ -2553,13 +2503,6 @@ Return ONLY valid JSON in exactly the same structure with translated values:
     const allFiles = readyFiles(allFilesList);
     if (!briefText.trim() && allFiles.length === 0) { setErr("Завантажте матеріали або введіть текст ТЗ"); return; }
 
-    // Check total page count before sending
-    const totalSelectedPages = allFiles.reduce((sum, f) => sum + (f.pages || []).filter(p => p._selected !== false && p.b64).length, 0);
-    if (totalSelectedPages > 80) {
-      setErr(`Забагато сторінок (${totalSelectedPages}). Поверни в галерею та зніми відмітку з частини сторінок — рекомендовано не більше 60.`);
-      return;
-    }
-
     // Warn if some files are still loading
     const stillLoading = (allFilesList.files || []).filter(f => f._loading);
     if (stillLoading.length > 0) {
@@ -2567,7 +2510,7 @@ Return ONLY valid JSON in exactly the same structure with translated values:
       return;
     }
 
-    setErr(""); setParsing(true);
+    setErr(""); setParseStatus(""); setParsing(true);
 
     // Number files within each category
     const catCounters = {};
@@ -2577,8 +2520,19 @@ Return ONLY valid JSON in exactly the same structure with translated values:
       return { ...f, _label: `${cat.toUpperCase()} ${catCounters[cat]}` };
     });
 
+    // Pre-process large PDFs: chunk into Haiku batches, extract text per page
+    let processedFiles;
+    try {
+      processedFiles = await preProcessLargeFiles(labeledFiles, apiKey, setParseStatus);
+    } catch (e) {
+      setErr(`Помилка попередньої обробки: ${e.message}`);
+      setParsing(false); setParseStatus("");
+      return;
+    }
+    setParseStatus("Відправляю до Claude…");
+
     // File manifest for the prompt
-    const manifest = labeledFiles.map(f => `  • ${f._label} [${f.ext || f.type?.toUpperCase()}]: ${f.filename}${f._confidence === "low" ? " (?)" : ""}`).join("\n");
+    const manifest = processedFiles.map(f => `  • ${f._label} [${f.ext || f.type?.toUpperCase()}]: ${f.filename}${f._preExtracted ? ` (${f._totalPages} стор., попередньо оброблено)` : ""}${f._confidence === "low" ? " (?)" : ""}`).join("\n");
 
     const imgIndex = buildImgIndex();
 
@@ -2684,7 +2638,7 @@ ${sowTemplatesText}
 ВІДПОВІДАЙ ТІЛЬКИ JSON:
 {"project_type":"...","project_annotation":"...","rooms":["Загальне","Вітальня"],"tz_by_room":{"Загальне":{"Тип освітлення":[{"id":"tz1","text":"Тепле освітлення 2700K, торшер біля дивану","quote":"тепле освітлення, торшер біля дивану","stage":"Світло","source":"ТЗ ТЕКСТОМ","img_ref":null,"links":[]}]},"Вітальня":{"Меблі та моделі":[{"id":"tz2","text":"Диван — Minotti Lawrence, сірий велюр","quote":"диван Minotti Lawrence сірий","stage":"Моделінг","source":"МАТЕРІАЛИ 1","img_ref":{"file":"МАТЕРІАЛИ 1","page":2},"links":[{"url":"https://minotti.com/...","label":"Minotti Lawrence","type":"furniture"}]}]}},"conflicts":["Конфлікт: колір стін вітальні. Джерело A: бриф — 'темно-сірі стіни'. Джерело B: мудборд стор.2 — світлий інтер'єр. Питання: який варіант пріоритетний?"],"roadmap":[{"stage":"Моделінг","order":1,"notes":"Перед стартом уточнити план у клієнта — є розбіжність між кресленням і брифом","tasks":["Змоделювати планування за DWG","Базові меблі по референсах"]}],"sources":[{"file":"МУДБОРД 1","page":2,"found":[{"id":"src1","type":"furniture","description":"Диван Minotti Lawrence, сірий велюр"},{"id":"src2","type":"style_ref","description":"Скандинавський стиль, натуральні матеріали"},{"id":"src3","type":"lighting","description":"Торшер Flos IC F підлоговий"}]},{"file":"КРЕСЛЕННЯ","page":1,"found":[{"id":"src4","type":"dimensions","description":"Вітальня 6×4м, спальня 4×3.5м"},{"id":"src5","type":"camera","description":"Ракурс з кута вітальні на зону відпочинку"}]}],"sow_missing":["Час доби — не вказано. Буде: день. Підтвердіть або надішліть заміну","Меблі — потрібно надати посилання або бренд для кожної позиції"],"sow_unclear":["Колір стін — знайдено: 'замінити зелений'. Неясно: на який колір — потрібен RAL/HEX"],"delivery_spec":[{"key":"Роздільність","value":"4K","source":"brief"},{"key":"DPI","value":"72 dpi","source":"default"},{"key":"Формат","value":"JPEG","source":"default"},{"key":"Час доби","value":"вечір","source":"brief"},{"key":"Кількість зображень","value":"—","source":"unclear"}],"client_comments":[{"page":"ТЗ ТЕКСТОМ 1","text":"..."}]}` }];
 
-    parts.push(...filesToParts(labeledFiles, "ФАЙЛ"));
+    parts.push(...filesToParts(processedFiles, "ФАЙЛ"));
 
     try {
       const result = await callAPI(parts, 2, apiKey);
@@ -2736,12 +2690,11 @@ ${sowTemplatesText}
       setTzClientTranslation(null);
       saveSession({ savedAt: new Date().toISOString(), projectType: result.project_type || "", rooms, tzByRoom: stripImgRefs(byRoom), tzAnnotation: result.project_annotation || "", clientComments: result.client_comments || [], sowMissing: result.sow_missing || [], sowUnclear: result.sow_unclear || [], deliverySpec: result.delivery_spec || [], sowCoverage: [], conflicts: result.conflicts || [], roadmap: result.roadmap || [], sources: result.sources || [] });
       setStage("review");
-      if (tavilyKey.trim()) searchLinksWithTavily(byRoom);
       buildSowCoverage(result.project_type || "", byRoom, apiKey);
     } catch (e) {
       setErr(`Помилка: ${e.message}`);
     }
-    setParsing(false);
+    setParsing(false); setParseStatus("");
   }
 
   const handleEditItem = (id, text) => setTzByRoom(prev => {
@@ -2787,9 +2740,6 @@ ${sowTemplatesText}
         onEdit={handleEditItem}
         onRemove={handleRemoveItem}
         onBack={() => setStage("upload")}
-        onSearchLinks={tavilyKey ? searchLinksWithTavily : null}
-        searchingLinks={searchingLinks}
-        linkSearchProgress={linkSearchProgress}
         clientTranslation={tzClientTranslation}
         buildingClientTranslation={buildingClientTranslation}
         onBuildClientTranslation={buildClientTranslation}
@@ -2805,16 +2755,6 @@ ${sowTemplatesText}
         <span style={{ fontSize: 9, color: "#666", fontFamily: "monospace" }}>v0.2 — розбір ТЗ для 3D-візуалізації</span>
         <div style={{ marginLeft: "auto", display: "flex", alignItems: "center", gap: 12 }}>
           <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-            <span style={{ fontSize: 9, color: "#555", fontFamily: "monospace" }}>TAVILY</span>
-            <input
-              value={tavilyKey}
-              onChange={e => saveTavilyKey(e.target.value)}
-              type="password"
-              placeholder="tvly-..."
-              style={{ background: "#2a2a2a", border: `1px solid ${tavilyKey ? "#27ae60" : "#333"}`, color: "#aaa", fontSize: 10, fontFamily: "monospace", padding: "4px 8px", borderRadius: 4, width: 140, outline: "none" }}
-            />
-          </div>
-          <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
             <span style={{ fontSize: 9, color: "#555", fontFamily: "monospace" }}>ANTHROPIC</span>
             <input
               value={apiKey}
@@ -2829,12 +2769,6 @@ ${sowTemplatesText}
       </div>
 
       <div style={{ maxWidth: 900, margin: "0 auto", padding: "24px" }}>
-        {/* Pipeline badge */}
-        <div style={{ display: "flex", gap: 6, marginBottom: 20, flexWrap: "wrap" }}>
-          {["1. Прийом файлів", "2. Класифікація", "3. Валідація", "4. Запит доп.", "5. Парсинг по стадіях", "6. Markdown", "7. Фінальне ТЗ", "8. Звіт"].map((s, i) => (
-            <div key={i} style={{ fontSize: 9, fontFamily: "monospace", color: i < 2 ? "#1a1a1a" : "#bbb", background: i < 2 ? "#e8e6e1" : "#f0eeea", padding: "3px 8px", borderRadius: 4, border: i < 2 ? "1px solid #ccc" : "1px solid #e8e6e1" }}>{s}</div>
-          ))}
-        </div>
 
         {/* Upload zone */}
         <div style={{ marginBottom: 20 }}>
@@ -2880,8 +2814,8 @@ ${sowTemplatesText}
           style={{ width: "100%", background: parsing ? "#444" : "#1a1a1a", color: "#f2f0ec", border: "none", padding: "16px", fontSize: 13, letterSpacing: "0.14em", fontFamily: "monospace", cursor: parsing ? "not-allowed" : "pointer", borderRadius: 8, display: "flex", alignItems: "center", justifyContent: "center", gap: 10 }}
         >
           {parsing
-            ? <><div style={{ width: 14, height: 14, border: "2px solid #666", borderTop: "2px solid #fff", borderRadius: "50%", animation: "spin 0.7s linear infinite" }} />РОЗБИРАЮ ТЗ…</>
-            : "РОЗІБРАТИ ТЗ →"
+            ? <><div style={{ width: 14, height: 14, border: "2px solid #666", borderTop: "2px solid #fff", borderRadius: "50%", animation: "spin 0.7s linear infinite" }} /><span style={{ fontSize: 11, letterSpacing: "0.05em", maxWidth: 500, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{parseStatus || "РОЗБИРАЮ ТЗ…"}</span></>
+            : "CREATE SOWa →"
           }
         </button>
 

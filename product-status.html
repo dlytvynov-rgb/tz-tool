@@ -1,0 +1,375 @@
+<!DOCTYPE html>
+<html lang="uk">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>ТЗ Tool — Product Status</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; background: #fff; color: #1a1a1a; font-size: 13px; line-height: 1.5; }
+  .page { max-width: 1100px; margin: 0 auto; padding: 60px 80px; }
+
+  /* Header */
+  .meta { font-size: 10px; letter-spacing: 0.15em; color: #999; text-transform: uppercase; margin-bottom: 24px; }
+  .title { font-size: 36px; font-weight: 700; margin-bottom: 6px; }
+  .updated { font-size: 11px; color: #999; float: right; margin-top: -40px; }
+  .subtitle { font-size: 14px; color: #555; margin-bottom: 40px; max-width: 500px; }
+
+  hr { border: none; border-top: 1px solid #e5e5e5; margin: 40px 0; }
+
+  /* Principle */
+  .principle { background: #fafafa; border-left: 3px solid #e5e5e5; padding: 16px 20px; margin-bottom: 48px; font-size: 13px; color: #333; }
+  .principle strong { font-weight: 600; }
+
+  /* For whom */
+  .section-label { font-size: 10px; letter-spacing: 0.15em; color: #999; text-transform: uppercase; margin-bottom: 16px; }
+  .cards { display: flex; gap: 16px; margin-bottom: 48px; }
+  .card { flex: 1; border: 1px solid #e8e8e8; border-radius: 8px; padding: 18px; }
+  .card-meta { font-size: 9px; letter-spacing: 0.12em; color: #999; text-transform: uppercase; margin-bottom: 8px; }
+  .card-title { font-size: 16px; font-weight: 600; margin-bottom: 8px; }
+  .card-desc { font-size: 12px; color: #666; line-height: 1.6; }
+
+  /* Stats */
+  .stats { display: flex; gap: 16px; margin-bottom: 60px; }
+  .stat { flex: 1; border: 1px solid #e8e8e8; border-radius: 8px; padding: 18px 20px; }
+  .stat-num { font-size: 28px; font-weight: 700; margin-bottom: 4px; }
+  .stat-num.green { color: #27ae60; }
+  .stat-num.orange { color: #e67e22; }
+  .stat-label { font-size: 10px; letter-spacing: 0.1em; color: #999; text-transform: uppercase; }
+
+  /* Pipeline */
+  .pipeline-label { font-size: 10px; letter-spacing: 0.15em; color: #999; text-transform: uppercase; margin-bottom: 24px; }
+  .stage { display: flex; gap: 24px; margin-bottom: 32px; padding-bottom: 32px; border-bottom: 1px solid #f0f0f0; }
+  .stage:last-child { border-bottom: none; }
+  .stage-num { font-size: 11px; color: #bbb; font-weight: 600; min-width: 24px; padding-top: 2px; }
+  .stage-content { flex: 1; }
+  .stage-header { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 6px; }
+  .stage-title { font-size: 16px; font-weight: 600; }
+  .stage-desc { font-size: 12px; color: #666; margin-bottom: 10px; }
+  .stage-items { list-style: none; }
+  .stage-items li { font-size: 12px; color: #555; padding: 2px 0; padding-left: 14px; position: relative; }
+  .stage-items li::before { content: ""; position: absolute; left: 0; top: 8px; width: 5px; height: 5px; border-radius: 50%; background: #ccc; }
+
+  /* Badges */
+  .badge { font-size: 9px; font-weight: 700; letter-spacing: 0.1em; padding: 3px 10px; border-radius: 4px; white-space: nowrap; }
+  .badge-done { background: #e8f8ee; color: #27ae60; border: 1px solid #c3e6cb; }
+  .badge-partial { background: #fff8ec; color: #e67e22; border: 1px solid #fce5b2; }
+  .badge-todo { background: #f5f5f5; color: #999; border: 1px solid #e0e0e0; }
+
+  /* Formats */
+  .formats { display: flex; gap: 8px; flex-wrap: wrap; margin: 40px 0; }
+  .fmt { font-size: 10px; font-weight: 600; letter-spacing: 0.08em; color: #2980b9; background: #eaf4fb; border: 1px solid #c5dff0; padding: 4px 12px; border-radius: 4px; }
+
+  /* Features grid */
+  .features { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 16px; margin: 40px 0 60px; }
+  .feat { border: 1px solid #e8e8e8; border-radius: 8px; padding: 16px; }
+  .feat-meta { font-size: 9px; letter-spacing: 0.12em; color: #999; text-transform: uppercase; margin-bottom: 6px; }
+  .feat-title { font-size: 14px; font-weight: 600; margin-bottom: 6px; }
+  .feat-desc { font-size: 12px; color: #666; line-height: 1.5; }
+
+  /* What's next */
+  .next { display: flex; flex-direction: column; gap: 12px; margin-top: 24px; }
+  .next-item { display: flex; justify-content: space-between; align-items: center; border: 1px solid #e8e8e8; border-radius: 8px; padding: 16px 20px; }
+  .next-num { font-size: 11px; color: #bbb; font-weight: 600; margin-right: 16px; min-width: 20px; }
+  .next-content { flex: 1; }
+  .next-title { font-size: 14px; font-weight: 600; margin-bottom: 3px; }
+  .next-desc { font-size: 12px; color: #666; }
+  .badge-critical { background: #fde8e8; color: #e74c3c; border: 1px solid #f5c6c6; font-size: 9px; font-weight: 700; letter-spacing: 0.1em; padding: 3px 10px; border-radius: 4px; }
+  .badge-high { background: #fff8ec; color: #e67e22; border: 1px solid #fce5b2; font-size: 9px; font-weight: 700; letter-spacing: 0.1em; padding: 3px 10px; border-radius: 4px; }
+  .badge-mid { background: #eaf4fb; color: #2980b9; border: 1px solid #c5dff0; font-size: 9px; font-weight: 700; letter-spacing: 0.1em; padding: 3px 10px; border-radius: 4px; }
+
+  @media print {
+    body { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+    .page { padding: 40px 60px; }
+  }
+</style>
+</head>
+<body>
+<div class="page">
+
+  <div class="meta">PRODUCT STATUS · ТЗ TOOL</div>
+  <div class="updated">Оновлено: 13.04.2026</div>
+  <div class="title">ТЗ Tool</div>
+  <div class="subtitle">Перетворює будь-який пакет файлів від клієнта на структуроване ТЗ — зрозуміле виконавцю, ПМу і AI.</div>
+
+  <hr>
+
+  <div class="principle">
+    <strong>Принцип:</strong> ТЗ вважається готовим до виробництва, якщо після його читання можна почати моделінг без дзвінка клієнту.
+  </div>
+
+  <div class="section-label">ДЛЯ КОГО</div>
+  <div class="cards">
+    <div class="card">
+      <div class="card-meta">Виконавець</div>
+      <div class="card-title">3D Візуалізатор</div>
+      <div class="card-desc">Потребує повне ТЗ по стадіях: що моделювати, які матеріали, ракурси, дедлайн — без повторних запитань клієнту.</div>
+    </div>
+    <div class="card">
+      <div class="card-meta">Менеджмент</div>
+      <div class="card-title">ПМ / Арт Директор</div>
+      <div class="card-desc">Контролює повноту ТЗ, бачить що відсутнє, генерує запит до клієнта, має звіт по проекту.</div>
+    </div>
+    <div class="card">
+      <div class="card-meta">Джерело</div>
+      <div class="card-title">Клієнт</div>
+      <div class="card-desc">Надає файли в будь-якому форматі. Отримує конкретний список питань що не вистачає.</div>
+    </div>
+  </div>
+
+  <div class="stats">
+    <div class="stat">
+      <div class="stat-num green">4 / 8</div>
+      <div class="stat-label">Етапів реалізовано</div>
+    </div>
+    <div class="stat">
+      <div class="stat-num green">9</div>
+      <div class="stat-label">Форматів файлів</div>
+    </div>
+    <div class="stat">
+      <div class="stat-num orange">3</div>
+      <div class="stat-label">Етапів в роботі</div>
+    </div>
+    <div class="stat">
+      <div class="stat-num" style="color:#999">1</div>
+      <div class="stat-label">Етапів не розпочато</div>
+    </div>
+  </div>
+
+  <hr>
+
+  <div class="pipeline-label">PIPELINE — 8 ЕТАПІВ</div>
+
+  <div class="stage">
+    <div class="stage-num">01</div>
+    <div class="stage-content">
+      <div class="stage-header">
+        <div class="stage-title">Прийом і класифікація файлів</div>
+        <span class="badge badge-done">ГОТОВО</span>
+      </div>
+      <div class="stage-desc">Сортування не за типом файлу, а за типом даних всередині. AI визначає категорію кожного файлу.</div>
+      <ul class="stage-items">
+        <li>Завантаження PDF, DOCX, DWG, DXF, Excel, CSV, зображень, TXT</li>
+        <li>AI-класифікація файлів по категоріях (Планування, Стиль, Матеріали…)</li>
+        <li>AI-класифікація кожної сторінки PDF окремо</li>
+        <li>Галерея сторінок з вибором і ручною корекцією категорій</li>
+        <li>Покращений парсинг PDF: реконструкція тексту по рядках, PNG для сканів</li>
+        <li>Індикатор текстового шару — скільки сторінок мають текст vs скан</li>
+      </ul>
+    </div>
+  </div>
+
+  <div class="stage">
+    <div class="stage-num">02</div>
+    <div class="stage-content">
+      <div class="stage-header">
+        <div class="stage-title">Визначення типу проекту і SOW-шаблон</div>
+        <span class="badge badge-done">ГОТОВО</span>
+      </div>
+      <div class="stage-desc">AI визначає тип проекту та підвантажує еталон повного ТЗ для цього типу.</div>
+      <ul class="stage-items">
+        <li>5 типів проекту: Інтер'єр житловий / комерційний, Екстер'єр, Мастерплан, Продукт</li>
+        <li>SOW-шаблони з переліком обов'язкових пунктів для кожного типу</li>
+      </ul>
+    </div>
+  </div>
+
+  <div class="stage">
+    <div class="stage-num">03</div>
+    <div class="stage-content">
+      <div class="stage-header">
+        <div class="stage-title">Валідація і детектор протиріч</div>
+        <span class="badge badge-done">ГОТОВО</span>
+      </div>
+      <div class="stage-desc">Порівняння з SOW-шаблоном. Детектор конфліктів між файлами.</div>
+      <ul class="stage-items">
+        <li>Порівняння з шаблоном: що є, чого не вистачає, що неповно</li>
+        <li>Детальний опис неясностей — що знайдено і що конкретно запитати</li>
+        <li>Детектор протиріч між файлами (стиль конфліктує, різні матеріали для однієї поверхні…)</li>
+        <li>UI-панель "Конфлікти" в перегляді ТЗ із джерелами та питаннями для уточнення</li>
+      </ul>
+    </div>
+  </div>
+
+  <div class="stage">
+    <div class="stage-num">04</div>
+    <div class="stage-content">
+      <div class="stage-header">
+        <div class="stage-title">Запит недостатнього + дефолти по типу проекту</div>
+        <span class="badge badge-partial">ЧАСТКОВО</span>
+      </div>
+      <div class="stage-desc">Формування client request. Дефолтні значення для незаповнених пунктів.</div>
+      <ul class="stage-items">
+        <li>✓ Кнопка "Запит" — генерує готовий текст з питаннями для клієнта</li>
+        <li>✗ Дефолти по типу проекту ("Не вказано час доби → дефолт: золота година, 17:00")</li>
+        <li>✗ Клієнт підтверджує дефолти або надсилає заміну</li>
+      </ul>
+    </div>
+  </div>
+
+  <div class="stage">
+    <div class="stage-num">05</div>
+    <div class="stage-content">
+      <div class="stage-header">
+        <div class="stage-title">Парсинг по виробничих стадіях</div>
+        <span class="badge badge-done">ГОТОВО</span>
+      </div>
+      <div class="stage-desc">Кожна вимога прив'язана до стадії виробництва і містить цитату з джерела.</div>
+      <ul class="stage-items">
+        <li>6 стадій: Моделінг, Текстуринг, Світло, Камери, Пост-продакшн, Видача</li>
+        <li>Перегляд ТЗ за стадіями (поруч із переглядом за кімнатами)</li>
+        <li>Поле quote — дослівна цитата з брифу до кожної вимоги</li>
+      </ul>
+    </div>
+  </div>
+
+  <div class="stage">
+    <div class="stage-num">06</div>
+    <div class="stage-content">
+      <div class="stage-header">
+        <div class="stage-title">Нормалізація в єдиний формат</div>
+        <span class="badge badge-partial">ЧАСТКОВО</span>
+      </div>
+      <div class="stage-desc">Все вхідне конвертується в єдиний читабельний документ.</div>
+      <ul class="stage-items">
+        <li>✓ Копія ТЗ в Markdown (кнопка MD) — базова версія, лише текст по кімнатах</li>
+        <li>✗ Повний .md файл з усіма вимогами, зображеннями і посиланнями на джерела</li>
+      </ul>
+    </div>
+  </div>
+
+  <div class="stage">
+    <div class="stage-num">07</div>
+    <div class="stage-content">
+      <div class="stage-header">
+        <div class="stage-title">Фінальна структура ТЗ</div>
+        <span class="badge badge-partial">ЧАСТКОВО</span>
+      </div>
+      <div class="stage-desc">10-розділовий документ: від опису проекту до пріоритетів виробництва.</div>
+      <ul class="stage-items">
+        <li>✓ Структурований перегляд за кімнатами і категоріями</li>
+        <li>✓ Перегляд за виробничими стадіями</li>
+        <li>✓ Анотація проекту (повний текст)</li>
+        <li>✓ Прив'язка вимог до зображень-джерел із превью</li>
+        <li>✓ Редагування і видалення вимог вручну</li>
+        <li>✓ Друк в PDF</li>
+        <li>✗ Розділ "Пріоритети" — що важливіше якщо потрібно скоротити</li>
+      </ul>
+    </div>
+  </div>
+
+  <div class="stage">
+    <div class="stage-num">08</div>
+    <div class="stage-content">
+      <div class="stage-header">
+        <div class="stage-title">Звіт для ПМа і клієнта</div>
+        <span class="badge badge-todo">НЕ РОЗПОЧАТО</span>
+      </div>
+      <div class="stage-desc">Внутрішній звіт для команди і зовнішній документ для клієнта.</div>
+      <ul class="stage-items">
+        <li>Таблиця: пункт ТЗ / статус / джерело / стадія</li>
+        <li>Список протиріч з описом</li>
+        <li>Зовнішній документ для клієнта — що прийнято, що дефолт, що критично відсутнє</li>
+      </ul>
+    </div>
+  </div>
+
+  <hr>
+
+  <div class="section-label">ПІДТРИМУВАНІ ФОРМАТИ</div>
+  <div class="formats">
+    <span class="fmt">PDF</span>
+    <span class="fmt">DOCX / DOC</span>
+    <span class="fmt">DWG</span>
+    <span class="fmt">DXF</span>
+    <span class="fmt">XLSX / XLS</span>
+    <span class="fmt">CSV</span>
+    <span class="fmt">TXT / MD</span>
+    <span class="fmt">RTF</span>
+    <span class="fmt">JPG / PNG / WebP</span>
+  </div>
+
+  <hr>
+
+  <div class="section-label">КЛЮЧОВІ МОЖЛИВОСТІ</div>
+  <div class="features">
+    <div class="feat">
+      <div class="feat-meta">PDF ПАРСИНГ</div>
+      <div class="feat-title">Гібридний підхід</div>
+      <div class="feat-desc">Текстовий шар реконструюється по рядках (X/Y координати). Скани рендеряться як PNG без втрат якості.</div>
+    </div>
+    <div class="feat">
+      <div class="feat-meta">AI КЛАСИФІКАЦІЯ</div>
+      <div class="feat-title">Авто-сортування файлів</div>
+      <div class="feat-desc">Claude Haiku класифікує кожен файл і кожну сторінку PDF по категоріях проекту.</div>
+    </div>
+    <div class="feat">
+      <div class="feat-meta">ВИРОБНИЧІ СТАДІЇ</div>
+      <div class="feat-title">ТЗ по стадіях</div>
+      <div class="feat-desc">Кожна вимога прив'язана до стадії: Моделінг → Текстуринг → Світло → Камери → Пост → Видача.</div>
+    </div>
+    <div class="feat">
+      <div class="feat-meta">ЦИТАТИ</div>
+      <div class="feat-title">Дослівно з брифу</div>
+      <div class="feat-desc">Кожна вимога містить цитату з джерела — що саме сказав клієнт, без інтерпретацій.</div>
+    </div>
+    <div class="feat">
+      <div class="feat-meta">SOW ВАЛІДАЦІЯ</div>
+      <div class="feat-title">Детектор прогалин</div>
+      <div class="feat-desc">Порівнює ТЗ з шаблоном проекту. Показує що відсутнє і що неповно з деталями. Детектує протиріччя між файлами.</div>
+    </div>
+    <div class="feat">
+      <div class="feat-meta">ЗАПИТ КЛІЄНТУ</div>
+      <div class="feat-title">Готовий текст</div>
+      <div class="feat-desc">Кнопка "Запит" генерує структурований список питань для відправки клієнту.</div>
+    </div>
+    <div class="feat">
+      <div class="feat-meta">ДЖЕРЕЛА</div>
+      <div class="feat-title">Прив'язка до файлів</div>
+      <div class="feat-desc">Кожна вимога посилається на файл і сторінку-джерело. Превью відкривається прямо в ТЗ.</div>
+    </div>
+    <div class="feat">
+      <div class="feat-meta">СЕСІЇ</div>
+      <div class="feat-title">Збереження прогресу</div>
+      <div class="feat-desc">ТЗ зберігається локально. При наступному відкритті можна продовжити з того ж місця.</div>
+    </div>
+    <div class="feat">
+      <div class="feat-meta">РОАДМАП</div>
+      <div class="feat-title">План виробництва</div>
+      <div class="feat-desc">AI будує впорядкований план задач по стадіях з урахуванням залежностей між ними.</div>
+    </div>
+  </div>
+
+  <hr>
+
+  <div class="section-label">ЩО ДАЛІ</div>
+  <div class="next">
+    <div class="next-item">
+      <div class="next-num">01</div>
+      <div class="next-content">
+        <div class="next-title">Дефолти по типу проекту</div>
+        <div class="next-desc">Для кожного незаповненого пункту пропонується дефолт — клієнт підтверджує або надсилає заміну</div>
+      </div>
+      <span class="badge-high">ВИСОКИЙ</span>
+    </div>
+    <div class="next-item">
+      <div class="next-num">02</div>
+      <div class="next-content">
+        <div class="next-title">Звіт для ПМа</div>
+        <div class="next-desc">Таблиця статусів, список протиріч, внутрішній і зовнішній варіант документу</div>
+      </div>
+      <span class="badge-high">ВИСОКИЙ</span>
+    </div>
+    <div class="next-item">
+      <div class="next-num">03</div>
+      <div class="next-content">
+        <div class="next-title">Повний Markdown-експорт</div>
+        <div class="next-desc">Єдиний .md файл з усіма вимогами, цитатами, посиланнями — читабельний людиною і LLM</div>
+      </div>
+      <span class="badge-mid">СЕРЕДНІЙ</span>
+    </div>
+  </div>
+
+</div>
+</body>
+</html>

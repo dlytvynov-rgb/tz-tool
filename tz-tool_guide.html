@@ -1,0 +1,499 @@
+<!DOCTYPE html>
+<html lang="uk">
+<head>
+<meta charset="UTF-8">
+<title>ТЗ TOOL — Гайд користувача</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body { font-family: 'Segoe UI', Arial, sans-serif; background: #f5f4f1; color: #1a1a1a; padding: 40px 20px; }
+  .page { max-width: 960px; margin: 0 auto; }
+
+  /* Header */
+  .header { background: #1a1a1a; border-radius: 12px 12px 0 0; padding: 40px 48px; }
+  .header-label { font-size: 10px; letter-spacing: 0.2em; color: #555; font-family: monospace; margin-bottom: 10px; }
+  .header-title { font-size: 32px; font-weight: 700; color: #f2f0ec; line-height: 1.2; }
+  .header-sub { font-size: 13px; color: #666; margin-top: 10px; font-family: monospace; line-height: 1.6; }
+  .header-badges { display: flex; gap: 8px; margin-top: 18px; flex-wrap: wrap; }
+  .badge { font-size: 10px; font-family: monospace; padding: 4px 12px; border-radius: 20px; font-weight: 700; }
+  .badge-blue { background: #2980b9; color: #fff; }
+  .badge-green { background: #27ae60; color: #fff; }
+  .badge-gray { background: #333; color: #aaa; }
+
+  /* Content */
+  .content { background: #fff; padding: 48px; border-radius: 0 0 12px 12px; box-shadow: 0 4px 24px rgba(0,0,0,0.08); }
+
+  /* Section */
+  .section { margin-bottom: 52px; }
+  .section:last-child { margin-bottom: 0; }
+  .section-header { display: flex; align-items: center; gap: 12px; margin-bottom: 24px; padding-bottom: 10px; border-bottom: 2px solid #f0eeea; }
+  .section-num { width: 28px; height: 28px; background: #1a1a1a; color: #fff; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 12px; font-weight: 700; flex-shrink: 0; font-family: monospace; }
+  .section-title { font-size: 11px; font-weight: 700; letter-spacing: 0.15em; color: #888; font-family: monospace; text-transform: uppercase; }
+
+  /* Intro block */
+  .intro-box { background: #f5f4f1; border-radius: 8px; padding: 24px 28px; border-left: 4px solid #1a1a1a; }
+  .intro-box p { font-size: 14px; line-height: 1.7; color: #333; }
+  .intro-box strong { color: #1a1a1a; }
+
+  /* Steps */
+  .steps { display: flex; flex-direction: column; gap: 16px; }
+  .step { display: flex; gap: 16px; align-items: flex-start; }
+  .step-icon { width: 36px; height: 36px; border-radius: 8px; display: flex; align-items: center; justify-content: center; font-size: 16px; flex-shrink: 0; }
+  .step-icon-dark { background: #1a1a1a; }
+  .step-icon-blue { background: #2980b9; }
+  .step-icon-green { background: #27ae60; }
+  .step-body { flex: 1; }
+  .step-title { font-size: 13px; font-weight: 700; color: #1a1a1a; margin-bottom: 4px; }
+  .step-desc { font-size: 12px; color: #666; line-height: 1.6; }
+  .step-desc code { background: #f0eeea; padding: 1px 6px; border-radius: 3px; font-family: monospace; font-size: 11px; color: #333; }
+
+  /* Format grid */
+  .format-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); gap: 8px; }
+  .format-chip { background: #f5f4f1; border: 1px solid #e8e8e8; border-radius: 6px; padding: 10px 14px; }
+  .format-chip-icon { font-size: 18px; margin-bottom: 4px; }
+  .format-chip-label { font-size: 11px; font-weight: 700; color: #333; font-family: monospace; }
+  .format-chip-ext { font-size: 10px; color: #999; font-family: monospace; margin-top: 2px; }
+
+  /* Views */
+  .views-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+  .view-card { border: 1px solid #e8e8e8; border-radius: 8px; padding: 16px 18px; }
+  .view-card-header { display: flex; align-items: center; gap: 10px; margin-bottom: 8px; }
+  .view-tag { font-size: 9px; font-weight: 700; font-family: monospace; padding: 3px 10px; border-radius: 12px; letter-spacing: 0.08em; }
+  .view-card-title { font-size: 13px; font-weight: 700; color: #1a1a1a; }
+  .view-card-desc { font-size: 12px; color: #666; line-height: 1.6; }
+
+  /* Sections list */
+  .sections-list { display: flex; flex-direction: column; gap: 10px; }
+  .sec-item { display: flex; align-items: flex-start; gap: 14px; padding: 14px 18px; border: 1px solid #e8e8e8; border-radius: 8px; }
+  .sec-item-icon { font-size: 20px; flex-shrink: 0; width: 32px; text-align: center; }
+  .sec-item-body { flex: 1; }
+  .sec-item-title { font-size: 13px; font-weight: 700; color: #1a1a1a; margin-bottom: 3px; }
+  .sec-item-desc { font-size: 12px; color: #666; line-height: 1.55; }
+
+  /* Delivery spec demo */
+  .demo-table { width: 100%; border: 1px solid #e8e8e8; border-radius: 6px; overflow: hidden; margin-top: 12px; }
+  .demo-table-head { display: grid; grid-template-columns: 1fr 80px 1fr 120px; padding: 6px 14px; background: #f0eeea; }
+  .demo-table-head span { font-size: 9px; font-weight: 700; color: #888; font-family: monospace; letter-spacing: 0.08em; }
+  .demo-table-row { display: grid; grid-template-columns: 1fr 80px 1fr 120px; padding: 7px 14px; border-top: 1px solid #f0f0f0; align-items: center; }
+  .demo-table-row:nth-child(even) { background: #fafafa; }
+  .demo-table-row span { font-size: 11px; font-family: monospace; }
+  .tag-brief { color: #27ae60; font-weight: 700; font-size: 9px; }
+  .tag-default { color: #aaa; font-size: 9px; }
+  .tag-unclear { color: #e67e22; font-weight: 700; font-size: 9px; }
+
+  /* SOW matrix demo */
+  .sow-row { display: grid; grid-template-columns: 1fr 60px 1fr 130px; padding: 7px 14px; border-top: 1px solid #f0f0f0; align-items: start; }
+  .sow-row:nth-child(even) { background: #fafafa; }
+  .sow-row span { font-size: 11px; font-family: monospace; }
+
+  /* Tips */
+  .tips { display: flex; flex-direction: column; gap: 10px; }
+  .tip { display: flex; gap: 12px; align-items: flex-start; padding: 12px 16px; border-radius: 8px; background: #f9f8f6; border: 1px solid #ece9e4; }
+  .tip-icon { font-size: 16px; flex-shrink: 0; }
+  .tip-text { font-size: 12px; color: #555; line-height: 1.6; }
+  .tip-text strong { color: #1a1a1a; }
+
+  /* Export */
+  .export-cards { display: flex; gap: 12px; }
+  .export-card { flex: 1; border: 1px solid #e8e8e8; border-radius: 8px; padding: 16px 18px; }
+  .export-card-title { font-size: 13px; font-weight: 700; color: #1a1a1a; margin-bottom: 6px; display: flex; align-items: center; gap: 8px; }
+  .export-card-desc { font-size: 12px; color: #666; line-height: 1.55; }
+
+  /* Key setup */
+  .key-block { background: #f5f4f1; border-radius: 8px; padding: 20px 24px; display: flex; flex-direction: column; gap: 12px; }
+  .key-row { display: flex; align-items: center; gap: 14px; }
+  .key-label { font-size: 11px; font-family: monospace; font-weight: 700; color: #333; width: 120px; flex-shrink: 0; }
+  .key-required { font-size: 9px; font-family: monospace; padding: 2px 8px; border-radius: 10px; background: #e74c3c; color: #fff; font-weight: 700; }
+  .key-optional { font-size: 9px; font-family: monospace; padding: 2px 8px; border-radius: 10px; background: #aaa; color: #fff; }
+  .key-desc { font-size: 11px; color: #666; line-height: 1.5; }
+
+  hr.divider { border: none; border-top: 1px solid #f0eeea; margin: 32px 0; }
+</style>
+</head>
+<body>
+<div class="page">
+
+  <!-- Header -->
+  <div class="header">
+    <div class="header-label">ГАЙД КОРИСТУВАЧА · v0.2</div>
+    <div class="header-title">ТЗ Tool</div>
+    <div class="header-sub">Перетворює будь-який пакет файлів від клієнта<br>на структуроване технічне завдання для 3D-команди</div>
+    <div class="header-badges">
+      <span class="badge badge-blue">Web</span>
+      <span class="badge badge-green">macOS</span>
+      <span class="badge badge-green">Windows</span>
+      <span class="badge badge-gray">Claude Sonnet 4.6</span>
+    </div>
+  </div>
+
+  <div class="content">
+
+    <!-- Що це -->
+    <div class="section">
+      <div class="section-header">
+        <div class="section-num">?</div>
+        <div class="section-title">Що таке ТЗ Tool і навіщо він потрібен</div>
+      </div>
+      <div class="intro-box">
+        <p>
+          Клієнт надсилає пакет файлів: бриф у Word, креслення DWG, референси PDF, фотографії, таблиці Excel.
+          Вручну читати все це, зіставляти між собою і складати ТЗ займає <strong>1–3 години</strong> на один проект.<br><br>
+          ТЗ Tool робить це автоматично: <strong>завантажуєш файли → натискаєш одну кнопку → отримуєш структуроване ТЗ</strong> з вимогами по кімнатах, планом роботи по стадіях, виявленими суперечностями і списком питань до клієнта.
+        </p>
+      </div>
+    </div>
+
+    <!-- Як почати -->
+    <div class="section">
+      <div class="section-header">
+        <div class="section-num">0</div>
+        <div class="section-title">Перед першим запуском — налаштування API ключів</div>
+      </div>
+      <div class="key-block">
+        <div class="key-row">
+          <div class="key-label">Anthropic API</div>
+          <span class="key-required">ОБОВ'ЯЗКОВО</span>
+          <div class="key-desc">Потрібен для роботи інструменту. Вводиться в полі у верхньому правому куті. Зберігається в браузері — вводиться один раз.</div>
+        </div>
+        <div class="key-row">
+          <div class="key-label">Tavily API</div>
+          <span class="key-optional">ОПЦІЙНО</span>
+          <div class="key-desc">Автоматичний пошук посилань на меблі, матеріали, бренди після парсингу. Якщо не введений — все працює, тільки без автопошуку посилань.</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Крок 1 -->
+    <div class="section">
+      <div class="section-header">
+        <div class="section-num">1</div>
+        <div class="section-title">Завантаження файлів</div>
+      </div>
+      <div class="steps">
+        <div class="step">
+          <div class="step-icon step-icon-dark">📂</div>
+          <div class="step-body">
+            <div class="step-title">Перетягни або вибери файли</div>
+            <div class="step-desc">Перетягни файли у зону завантаження або натисни щоб вибрати. Можна завантажити кілька файлів одразу. Підтримується також <code>.zip</code> архів — розпаковується автоматично.</div>
+          </div>
+        </div>
+        <div class="step">
+          <div class="step-icon step-icon-dark">🏷</div>
+          <div class="step-body">
+            <div class="step-title">Автоматична класифікація</div>
+            <div class="step-desc">Кожен файл автоматично отримує категорію: <code>БРИФ</code>, <code>КРЕСЛЕННЯ</code>, <code>МУДБОРД</code>, <code>МАТЕРІАЛИ</code>, <code>СПЕЦИФІКАЦІЯ</code> тощо. Категорію можна змінити вручну якщо потрібно.</div>
+          </div>
+        </div>
+        <div class="step">
+          <div class="step-icon step-icon-dark">📄</div>
+          <div class="step-body">
+            <div class="step-title">Попередній перегляд</div>
+            <div class="step-desc">PDF-файли показуються сторінками — можна вибрати які сторінки передавати в аналіз. DWG/DXF рендеряться в зображення автоматично.</div>
+          </div>
+        </div>
+      </div>
+
+      <hr class="divider">
+
+      <div style="font-size: 11px; font-weight: 700; color: #888; font-family: monospace; letter-spacing: 0.1em; margin-bottom: 14px;">ПІДТРИМУВАНІ ФОРМАТИ</div>
+      <div class="format-grid">
+        <div class="format-chip">
+          <div class="format-chip-icon">📄</div>
+          <div class="format-chip-label">PDF</div>
+          <div class="format-chip-ext">.pdf</div>
+        </div>
+        <div class="format-chip">
+          <div class="format-chip-icon">📝</div>
+          <div class="format-chip-label">Word</div>
+          <div class="format-chip-ext">.docx</div>
+        </div>
+        <div class="format-chip">
+          <div class="format-chip-icon">📐</div>
+          <div class="format-chip-label">DWG / DXF</div>
+          <div class="format-chip-ext">.dwg .dxf</div>
+        </div>
+        <div class="format-chip">
+          <div class="format-chip-icon">📊</div>
+          <div class="format-chip-label">Excel</div>
+          <div class="format-chip-ext">.xlsx .csv</div>
+        </div>
+        <div class="format-chip">
+          <div class="format-chip-icon">🖼</div>
+          <div class="format-chip-label">Зображення</div>
+          <div class="format-chip-ext">.jpg .png .webp</div>
+        </div>
+        <div class="format-chip">
+          <div class="format-chip-icon">🗜</div>
+          <div class="format-chip-label">ZIP-архів</div>
+          <div class="format-chip-ext">.zip</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Крок 2 -->
+    <div class="section">
+      <div class="section-header">
+        <div class="section-num">2</div>
+        <div class="section-title">Аналіз — кнопка "Розібрати файли"</div>
+      </div>
+      <div class="steps">
+        <div class="step">
+          <div class="step-icon step-icon-blue">🤖</div>
+          <div class="step-body">
+            <div class="step-title">Основний аналіз</div>
+            <div class="step-desc">Claude читає всі файли разом, зіставляє бриф з кресленнями, референси з коментарями. Витягує вимоги, знаходить суперечності, будує роадмап і чеклист здачі.</div>
+          </div>
+        </div>
+        <div class="step">
+          <div class="step-icon step-icon-blue">🔗</div>
+          <div class="step-body">
+            <div class="step-title">Автопошук посилань (Tavily)</div>
+            <div class="step-desc">Якщо введений Tavily-ключ — автоматично шукає посилання на меблі, матеріали і бренди. Запускається паралельно після основного аналізу.</div>
+          </div>
+        </div>
+        <div class="step">
+          <div class="step-icon step-icon-blue">📋</div>
+          <div class="step-body">
+            <div class="step-title">Побудова SOW-матриці</div>
+            <div class="step-desc">Після основного аналізу автоматично запускається другий легкий запит — перевіряє покриття кожного пункту SOW-шаблону. З'являється у вкладці <code>ЗВІТ</code>.</div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Крок 3 — режими перегляду -->
+    <div class="section">
+      <div class="section-header">
+        <div class="section-num">3</div>
+        <div class="section-title">Перегляд результатів — чотири режими</div>
+      </div>
+      <div class="views-grid">
+        <div class="view-card">
+          <div class="view-card-header">
+            <span class="view-tag" style="background:#1a1a1a; color:#fff;">КІМНАТИ</span>
+            <div class="view-card-title">По приміщеннях</div>
+          </div>
+          <div class="view-card-desc">Всі вимоги згруповані по кімнатах (Вітальня, Кухня, Загальне тощо). Зліва список кімнат, справа — вимоги по категоріях. Основний режим роботи.</div>
+        </div>
+        <div class="view-card">
+          <div class="view-card-header">
+            <span class="view-tag" style="background:#1a1a1a; color:#fff;">СТАДІЇ</span>
+            <div class="view-card-title">По виробничих стадіях</div>
+          </div>
+          <div class="view-card-desc">Ті ж вимоги але відсортовані по стадіях виробництва: Моделінг → Текстуринг → Світло → Камери → Пост → Видача.</div>
+        </div>
+        <div class="view-card">
+          <div class="view-card-header">
+            <span class="view-tag" style="background:#2980b9; color:#fff;">ТАБЛИЦЯ</span>
+            <div class="view-card-title">Зведена таблиця</div>
+          </div>
+          <div class="view-card-desc">Всі вимоги в одній таблиці з фільтрацією і сортуванням. Колонки: Тип · Вимога · Цитата · Категорія · Кімната · Стадія · Джерело. Можна скачати як <strong>XLS</strong>.</div>
+        </div>
+        <div class="view-card">
+          <div class="view-card-header">
+            <span class="view-tag" style="background:#8e44ad; color:#fff;">ЗВІТ</span>
+            <div class="view-card-title">SOW-матриця</div>
+          </div>
+          <div class="view-card-desc">Таблиця покриття по кожному пункту SOW-шаблону: ✅ знайдено / ⚠️ неповно / ❌ відсутнє. Джерело клікабельне — відкриває оригінальний файл на потрібній сторінці.</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Секції в боковій панелі -->
+    <div class="section">
+      <div class="section-header">
+        <div class="section-num">4</div>
+        <div class="section-title">Секції в боковій панелі (режими Кімнати / Стадії)</div>
+      </div>
+      <div class="sections-list">
+        <div class="sec-item">
+          <div class="sec-item-icon">⚠</div>
+          <div class="sec-item-body">
+            <div class="sec-item-title">SOW — Delivery Spec + Питання до клієнта</div>
+            <div class="sec-item-desc">
+              <strong>Delivery Spec</strong> — таблиця технічних параметрів здачі: роздільність, DPI, формат, час доби тощо. Кожен параметр має статус: <span style="color:#27ae60;font-weight:700;">✓ з брифу</span> (клієнт вказав явно), <span style="color:#aaa;">дефолт</span> (підставляємо стандартне значення), <span style="color:#e67e22;font-weight:700;">⚠ уточнити</span> (невідомо).<br><br>
+              <strong>Питання до клієнта</strong> — список пунктів що відсутні або незрозумілі. Для пунктів з дефолтом формулювання м'яке: "не вказано, буде підставлено дефолт X — підтвердіть або надішліть заміну". Є кнопка <code>Запит</code> — копіює список в буфер для відправки клієнту.
+            </div>
+          </div>
+        </div>
+        <div class="sec-item">
+          <div class="sec-item-icon">⚡</div>
+          <div class="sec-item-body">
+            <div class="sec-item-title">Конфлікти між файлами</div>
+            <div class="sec-item-desc">Автоматично виявлені суперечності між документами. Наприклад: бриф каже "темно-сірі стіни", а мудборд показує світлий інтер'єр. Для кожного конфлікту вказані обидва джерела і конкретне питання для уточнення.</div>
+          </div>
+        </div>
+        <div class="sec-item">
+          <div class="sec-item-icon">▶</div>
+          <div class="sec-item-body">
+            <div class="sec-item-title">Роадмап</div>
+            <div class="sec-item-desc">Впорядкований план роботи по стадіях виробництва. Для кожної стадії — конкретні задачі, нотатки про залежності і ризики. Формується автоматично на основі всіх вимог.</div>
+          </div>
+        </div>
+        <div class="sec-item">
+          <div class="sec-item-icon">✓</div>
+          <div class="sec-item-body">
+            <div class="sec-item-title">Чеклист здачі</div>
+            <div class="sec-item-desc">Плоский список всіх вимог по стадіях — для звірки результату перед здачею клієнту. Моделер, текстурник і ПМ використовують один документ.</div>
+          </div>
+        </div>
+        <div class="sec-item">
+          <div class="sec-item-icon">📋</div>
+          <div class="sec-item-body">
+            <div class="sec-item-title">Джерела</div>
+            <div class="sec-item-desc">Посторінковий журнал — що знайдено в кожному файлі на кожній сторінці. Клік по тегу відкриває DocViewer на потрібній сторінці. Зручно для звірки: "звідки взялась ця вимога?"</div>
+          </div>
+        </div>
+        <div class="sec-item">
+          <div class="sec-item-icon">💬</div>
+          <div class="sec-item-body">
+            <div class="sec-item-title">Коментарі клієнта</div>
+            <div class="sec-item-desc">Всі рукописні нотатки, підписи і коментарі з файлів — зібрані в одному місці дослівно з прив'язкою до сторінки.</div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Delivery Spec демо -->
+    <div class="section">
+      <div class="section-header">
+        <div class="section-num">5</div>
+        <div class="section-title">Delivery Spec — як виглядає</div>
+      </div>
+      <div style="font-size: 12px; color: #666; margin-bottom: 12px; line-height: 1.6;">
+        Синій блок у верхній частині SOW-секції. Показує що саме буде здано клієнту — навіть якщо він не вказав частину параметрів явно.
+      </div>
+      <div class="demo-table">
+        <div class="demo-table-head">
+          <span>Параметр</span><span>Значення</span><span></span><span>Статус</span>
+        </div>
+        <div class="demo-table-row"><span>Роздільність</span><span>4K</span><span></span><span class="tag-brief">✓ з брифу</span></div>
+        <div class="demo-table-row"><span>DPI</span><span>72 dpi</span><span></span><span class="tag-default">дефолт</span></div>
+        <div class="demo-table-row"><span>Формат файлу</span><span>JPEG</span><span></span><span class="tag-default">дефолт</span></div>
+        <div class="demo-table-row"><span>Час доби</span><span>вечір</span><span></span><span class="tag-brief">✓ з брифу</span></div>
+        <div class="demo-table-row"><span>Кількість зображень</span><span>—</span><span></span><span class="tag-unclear">⚠ уточнити</span></div>
+        <div class="demo-table-row"><span>Співвідношення сторін</span><span>16x9</span><span></span><span class="tag-default">дефолт</span></div>
+      </div>
+    </div>
+
+    <!-- SOW Matrix demo -->
+    <div class="section">
+      <div class="section-header">
+        <div class="section-num">6</div>
+        <div class="section-title">SOW-матриця у вкладці ЗВІТ — як виглядає</div>
+      </div>
+      <div style="font-size: 12px; color: #666; margin-bottom: 12px; line-height: 1.6;">
+        Будується після основного аналізу. Для кожного пункту SOW-шаблону — явний статус, що саме знайдено і в якому файлі.
+      </div>
+      <div class="demo-table">
+        <div class="demo-table-head" style="grid-template-columns: 1fr 60px 1fr 130px;">
+          <span>Пункт SOW</span><span>Статус</span><span>Знайдено</span><span>Джерело</span>
+        </div>
+        <div class="sow-row"><span>Креслення плану</span><span style="color:#27ae60;font-weight:700;">✅</span><span>DWG з розміщенням меблів</span><span style="color:#2980b9;text-decoration:underline;cursor:pointer;">БРИФ стор.1 ↗</span></div>
+        <div class="sow-row"><span>Меблі та декор</span><span style="color:#27ae60;font-weight:700;">✅</span><span>Диван Minotti, стіл West Elm</span><span style="color:#2980b9;text-decoration:underline;cursor:pointer;">МАТЕРІАЛИ стор.3 ↗</span></div>
+        <div class="sow-row"><span>Оздоблення стін</span><span style="color:#e67e22;font-weight:700;">⚠️</span><span>Є колір, немає матеріалу</span><span style="color:#2980b9;text-decoration:underline;cursor:pointer;">БРИФ стор.2 ↗</span></div>
+        <div class="sow-row"><span>Вид з вікна</span><span style="color:#e74c3c;font-weight:700;">❌</span><span>—</span><span style="color:#bbb;">—</span></div>
+        <div class="sow-row"><span>Роздільність</span><span style="color:#27ae60;font-weight:700;">✅</span><span>4K вказано в брифі</span><span style="color:#2980b9;text-decoration:underline;cursor:pointer;">БРИФ стор.1 ↗</span></div>
+      </div>
+      <div style="margin-top: 8px; font-size: 10px; color: #bbb; font-family: monospace;">
+        3 знайдено · 1 неповно · 1 відсутнє
+      </div>
+    </div>
+
+    <!-- Джерела і DocViewer -->
+    <div class="section">
+      <div class="section-header">
+        <div class="section-num">7</div>
+        <div class="section-title">Перегляд джерел — DocViewer</div>
+      </div>
+      <div class="steps">
+        <div class="step">
+          <div class="step-icon" style="background:#f0eeea; font-size:18px;">↗</div>
+          <div class="step-body">
+            <div class="step-title">Кнопка "Джерело" у кожній вимозі</div>
+            <div class="step-desc">Натисни <code>↗ Джерело</code> поряд з будь-якою вимогою — відкриється DocViewer на тій сторінці PDF де ця вимога знайдена. Навігація по сторінках всередині файлу.</div>
+          </div>
+        </div>
+        <div class="step">
+          <div class="step-icon" style="background:#f0eeea; font-size:18px;">🔗</div>
+          <div class="step-body">
+            <div class="step-title">Посилання на меблі і матеріали</div>
+            <div class="step-desc">Якщо Tavily знайшов посилання — вони відображаються прямо в картці вимоги. Відкриваються в системному браузері.</div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Експорт -->
+    <div class="section">
+      <div class="section-header">
+        <div class="section-num">8</div>
+        <div class="section-title">Експорт</div>
+      </div>
+      <div class="export-cards">
+        <div class="export-card">
+          <div class="export-card-title">📊 Excel (XLS)</div>
+          <div class="export-card-desc">Кнопка у тулбарі режиму Таблиця. Скачує <code>tz-YYYY-MM-DD.xlsx</code>. Колонки: Тип · Вимога · Цитата · Категорія · Кімната · Стадія · Джерело · Посилання. Посилання клікабельні в Excel. Враховує активні фільтри.</div>
+        </div>
+        <div class="export-card">
+          <div class="export-card-title">🖨 PDF (друк)</div>
+          <div class="export-card-desc">Кнопка <code>PDF</code> у хедері. Використовує <code>window.print()</code> з оптимізованими стилями друку: таблиця без розривів, UI-елементи приховані, посилання виводяться як текст.</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Типи проектів -->
+    <div class="section">
+      <div class="section-header">
+        <div class="section-num">9</div>
+        <div class="section-title">Типи проектів — SOW-шаблони</div>
+      </div>
+      <div style="font-size: 12px; color: #666; margin-bottom: 16px; line-height: 1.6;">
+        Тип проекту визначається автоматично. Для кожного типу є свій чеклист і набір виробничих дефолтів.
+      </div>
+      <div class="format-grid" style="grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));">
+        <div class="format-chip"><div class="format-chip-icon">🛋</div><div class="format-chip-label">Інтер'єр житловий</div></div>
+        <div class="format-chip"><div class="format-chip-icon">🏢</div><div class="format-chip-label">Інтер'єр комерційний</div></div>
+        <div class="format-chip"><div class="format-chip-icon">🏠</div><div class="format-chip-label">Екстер'єр / фасад</div><div class="format-chip-ext">+ Aerial підтип</div></div>
+        <div class="format-chip"><div class="format-chip-icon">✨</div><div class="format-chip-label">Лайфстайл рендеринг</div></div>
+        <div class="format-chip"><div class="format-chip-icon">📦</div><div class="format-chip-label">Silo рендеринг</div></div>
+        <div class="format-chip"><div class="format-chip-icon">🗺</div><div class="format-chip-label">Мастерплан</div></div>
+        <div class="format-chip"><div class="format-chip-icon">🪑</div><div class="format-chip-label">Продуктова візуалізація</div></div>
+        <div class="format-chip"><div class="format-chip-icon">🧊</div><div class="format-chip-label">3D Моделювання</div><div class="format-chip-ext">+ AR підтип</div></div>
+        <div class="format-chip"><div class="format-chip-icon">📐</div><div class="format-chip-label">Флорплан</div></div>
+      </div>
+    </div>
+
+    <!-- Поради -->
+    <div class="section">
+      <div class="section-header">
+        <div class="section-num">💡</div>
+        <div class="section-title">Поради для кращого результату</div>
+      </div>
+      <div class="tips">
+        <div class="tip">
+          <div class="tip-icon">📁</div>
+          <div class="tip-text"><strong>Завантажуй всі файли одразу</strong> — чим більше контексту отримує Claude, тим точніше зіставлення. Бриф + креслення + референси разом дають кращий результат ніж по одному.</div>
+        </div>
+        <div class="tip">
+          <div class="tip-icon">🗜</div>
+          <div class="tip-text"><strong>ZIP для великих пакетів</strong> — якщо файлів багато, пакуй в .zip. Інструмент розпакує і класифікує автоматично.</div>
+        </div>
+        <div class="tip">
+          <div class="tip-icon">📐</div>
+          <div class="tip-text"><strong>DWG краще за PDF-скан креслення</strong> — з DWG витягуються назви приміщень, шари і розміри. PDF-скан дає тільки зображення.</div>
+        </div>
+        <div class="tip">
+          <div class="tip-icon">⚠</div>
+          <div class="tip-text"><strong>Перевіряй конфлікти першими</strong> — розбіжності між файлами найкраще уточнити у клієнта до початку роботи, а не в середині процесу.</div>
+        </div>
+        <div class="tip">
+          <div class="tip-icon">💾</div>
+          <div class="tip-text"><strong>Сесія зберігається автоматично</strong> — якщо закрив вкладку, остання сесія відновлюється кнопкою в стартовому екрані.</div>
+        </div>
+      </div>
+    </div>
+
+  </div><!-- /content -->
+</div><!-- /page -->
+</body>
+</html>

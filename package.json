@@ -1,7 +1,7 @@
 {
   "name": "tz-tool",
   "private": true,
-  "version": "0.0.0",
+  "version": "0.2.0",
   "type": "module",
   "scripts": {
     "dev": "vite",
@@ -14,12 +14,13 @@
   },
   "dependencies": {
     "@mlightcad/libdxfrw-web": "^0.1.0",
+    "@mlightcad/libredwg-web": "^0.6.10",
     "react": "^19.2.4",
     "react-dom": "^19.2.4"
   },
   "devDependencies": {
-    "@tauri-apps/cli": "^2",
     "@eslint/js": "^9.39.4",
+    "@tauri-apps/cli": "^2",
     "@types/react": "^19.2.14",
     "@types/react-dom": "^19.2.3",
     "@vitejs/plugin-react": "^6.0.1",

@@ -1,0 +1,273 @@
+<!DOCTYPE html>
+<html lang="uk">
+<head>
+<meta charset="UTF-8">
+<title>ТЗ TOOL v0.2 — Роадмап vs Зроблено</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body { font-family: 'Segoe UI', Arial, sans-serif; background: #f0eeea; color: #1a1a1a; padding: 40px; }
+  .page { max-width: 960px; margin: 0 auto; background: #fff; border-radius: 12px; overflow: hidden; box-shadow: 0 4px 24px rgba(0,0,0,0.1); }
+
+  .header { background: #1a1a1a; padding: 36px 40px; display: flex; justify-content: space-between; align-items: flex-end; }
+  .header-left .label { font-size: 10px; letter-spacing: 0.2em; color: #555; font-family: monospace; margin-bottom: 8px; }
+  .header-left .title { font-size: 26px; font-weight: 700; color: #f2f0ec; }
+  .header-left .sub { font-size: 12px; color: #555; margin-top: 6px; font-family: monospace; }
+  .header-right { display: flex; gap: 20px; }
+  .stat { text-align: center; }
+  .stat-num { font-size: 28px; font-weight: 700; font-family: monospace; }
+  .stat-label { font-size: 9px; letter-spacing: 0.1em; color: #666; font-family: monospace; margin-top: 2px; }
+  .stat-done .stat-num { color: #27ae60; }
+  .stat-planned .stat-num { color: #e67e22; }
+  .stat-server .stat-num { color: #2980b9; }
+
+  .content { padding: 40px; }
+
+  .block { margin-bottom: 36px; }
+  .block-header { display: flex; align-items: center; gap: 12px; margin-bottom: 14px; }
+  .block-num { width: 26px; height: 26px; background: #1a1a1a; color: #fff; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 11px; font-weight: 700; flex-shrink: 0; font-family: monospace; }
+  .block-title { font-size: 11px; font-weight: 700; letter-spacing: 0.15em; color: #888; font-family: monospace; text-transform: uppercase; }
+  .block-badge { font-size: 9px; font-family: monospace; padding: 2px 8px; border-radius: 10px; font-weight: 700; }
+  .badge-done { background: #e8f8f0; color: #27ae60; border: 1px solid #b8e8cc; }
+  .badge-partial { background: #fff8e8; color: #e67e22; border: 1px solid #f0d890; }
+  .badge-planned { background: #eef4ff; color: #2980b9; border: 1px solid #b8d4f0; }
+
+  .row-grid { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 1px; background: #f0eeea; border-radius: 8px; overflow: hidden; border: 1px solid #ece9e4; }
+  .col-head { padding: 10px 14px; font-size: 10px; font-weight: 700; letter-spacing: 0.1em; font-family: monospace; text-transform: uppercase; }
+  .col-planned-head { background: #fff9f0; color: #e67e22; }
+  .col-done-head { background: #f0faf5; color: #27ae60; }
+  .col-status-head { background: #f5f0ff; color: #8e44ad; text-align: center; }
+  .col-planned { background: #fff; padding: 10px 14px; font-size: 11px; color: #666; line-height: 1.55; border-bottom: 1px solid #f5f4f1; }
+  .col-done { background: #fff; padding: 10px 14px; font-size: 11px; color: #1a1a1a; line-height: 1.55; border-bottom: 1px solid #f5f4f1; }
+  .col-status { background: #fff; padding: 10px 14px; text-align: center; border-bottom: 1px solid #f5f4f1; display: flex; align-items: center; justify-content: center; }
+  .icon-done { font-size: 16px; }
+  .icon-partial { font-size: 16px; }
+  .icon-no { font-size: 16px; opacity: 0.3; }
+
+  code { background: #f5f4f1; padding: 1px 5px; border-radius: 3px; font-size: 10px; font-family: monospace; color: #8e44ad; }
+
+  .todo-section { margin-top: 40px; background: #fafafa; border-radius: 8px; border: 1px solid #ece9e4; overflow: hidden; }
+  .todo-header { background: #1a1a1a; padding: 12px 20px; font-size: 10px; font-weight: 700; letter-spacing: 0.15em; color: #888; font-family: monospace; text-transform: uppercase; }
+  .todo-item { display: grid; grid-template-columns: 1fr auto; gap: 20px; align-items: center; padding: 12px 20px; border-bottom: 1px solid #f0eeea; }
+  .todo-item:last-child { border-bottom: none; }
+  .todo-text { font-size: 12px; color: #333; line-height: 1.5; }
+  .todo-tag { font-size: 9px; font-family: monospace; padding: 3px 10px; border-radius: 10px; font-weight: 700; white-space: nowrap; }
+  .tag-next { background: #fff3e0; color: #e67e22; border: 1px solid #f0c060; }
+  .tag-server { background: #e8f4fd; color: #2980b9; border: 1px solid #aed6f1; }
+  .tag-after { background: #f5eeff; color: #8e44ad; border: 1px solid #d7bde2; }
+
+  .footer { background: #f5f4f1; padding: 16px 40px; display: flex; justify-content: space-between; border-top: 1px solid #ece9e4; }
+  .footer-text { font-size: 10px; color: #bbb; font-family: monospace; }
+
+  @media print {
+    body { background: #fff; padding: 0; }
+    .page { box-shadow: none; border-radius: 0; }
+  }
+</style>
+</head>
+<body>
+<div class="page">
+
+  <div class="header">
+    <div class="header-left">
+      <div class="label">ТЗ TOOL · v0.2 · КВІТЕНЬ 2026</div>
+      <div class="title">Роадмап vs Зроблено</div>
+      <div class="sub">Що планували · Що реалізували · Що далі</div>
+    </div>
+    <div class="header-right">
+      <div class="stat stat-done"><div class="stat-num">18</div><div class="stat-label">ЗРОБЛЕНО</div></div>
+      <div class="stat stat-planned"><div class="stat-num">4</div><div class="stat-label">ДАЛІ</div></div>
+      <div class="stat stat-server"><div class="stat-num">1</div><div class="stat-label">НА СЕРВЕРІ</div></div>
+    </div>
+  </div>
+
+  <div class="content">
+
+    <!-- 1. ПРОМПТ -->
+    <div class="block">
+      <div class="block-header">
+        <div class="block-num">1</div>
+        <div class="block-title">Промпт і розбір ТЗ</div>
+        <span class="block-badge badge-done">✓ Виконано повністю</span>
+      </div>
+      <div class="row-grid">
+        <div class="col-head col-planned-head">Планували</div>
+        <div class="col-head col-done-head">Зроблено</div>
+        <div class="col-head col-status-head">Статус</div>
+
+        <div class="col-planned">Простий парсинг по кімнатах</div>
+        <div class="col-done">Режим "3D художник + ПМ" — зіставляє всі файли разом</div>
+        <div class="col-status"><span class="icon-done">✅</span></div>
+
+        <div class="col-planned">Одне поле <code>link</code></div>
+        <div class="col-done"><code>links: [{url, label, type}]</code> — масив з типами</div>
+        <div class="col-status"><span class="icon-done">✅</span></div>
+
+        <div class="col-planned">Знайти суперечності між файлами</div>
+        <div class="col-done"><code>conflicts</code> — з джерелами A/B та конкретним питанням</div>
+        <div class="col-status"><span class="icon-done">✅</span></div>
+
+        <div class="col-planned">Роадмап проекту</div>
+        <div class="col-done"><code>roadmap</code> — по стадіях, з порядком, нотатками і задачами</div>
+        <div class="col-status"><span class="icon-done">✅</span></div>
+
+        <div class="col-planned">Журнал джерел посторінково</div>
+        <div class="col-done"><code>sources</code> — що знайдено в кожному файлі/сторінці з типом</div>
+        <div class="col-status"><span class="icon-done">✅</span></div>
+
+        <div class="col-planned">DWG: зіставляти з брифом</div>
+        <div class="col-done">DWG: кімнати з шарів/підписів, розбіжності → conflicts + sow_unclear</div>
+        <div class="col-status"><span class="icon-done">✅</span></div>
+      </div>
+    </div>
+
+    <!-- 2. UI -->
+    <div class="block">
+      <div class="block-header">
+        <div class="block-num">2</div>
+        <div class="block-title">UI — нові розділи sidebar</div>
+        <span class="block-badge badge-done">✓ Виконано повністю</span>
+      </div>
+      <div class="row-grid">
+        <div class="col-head col-planned-head">Планували</div>
+        <div class="col-head col-done-head">Зроблено</div>
+        <div class="col-head col-status-head">Статус</div>
+
+        <div class="col-planned">Розділ "Конфлікти"</div>
+        <div class="col-done">⚡ Конфлікти — червона підсвітка, джерела та питання</div>
+        <div class="col-status"><span class="icon-done">✅</span></div>
+
+        <div class="col-planned">Розділ "Роадмап"</div>
+        <div class="col-done">▶ Роадмап — нумерація, нотатки, задачі зі стрілками →</div>
+        <div class="col-status"><span class="icon-done">✅</span></div>
+
+        <div class="col-planned">Чеклист здачі для ПМ</div>
+        <div class="col-done">✓ Чеклист — плоский список по стадіях з чекбоксами</div>
+        <div class="col-status"><span class="icon-done">✅</span></div>
+
+        <div class="col-planned">Журнал джерел з тегами</div>
+        <div class="col-done">📋 Джерела — посторінково, дропдаун тегів з кольоровою індикацією</div>
+        <div class="col-status"><span class="icon-done">✅</span></div>
+      </div>
+    </div>
+
+    <!-- 3. TAVILY -->
+    <div class="block">
+      <div class="block-header">
+        <div class="block-num">3</div>
+        <div class="block-title">Пошук посилань — Tavily</div>
+        <span class="block-badge badge-done">✓ Виконано повністю</span>
+      </div>
+      <div class="row-grid">
+        <div class="col-head col-planned-head">Планували</div>
+        <div class="col-head col-done-head">Зроблено</div>
+        <div class="col-head col-status-head">Статус</div>
+
+        <div class="col-planned">Підключити зовнішній пошук</div>
+        <div class="col-done">Tavily API, Bearer auth, ключ в localStorage + поле в топбарі</div>
+        <div class="col-status"><span class="icon-done">✅</span></div>
+
+        <div class="col-planned">Автоматичний запуск після парсингу</div>
+        <div class="col-done">Автозапуск якщо є ключ; кнопка 🔗 для ручного перезапуску</div>
+        <div class="col-status"><span class="icon-done">✅</span></div>
+
+        <div class="col-planned">Точні запити (не просто текст вимоги)</div>
+        <div class="col-done">З imgRef → Claude Haiku аналізує зображення → точний запит англійською</div>
+        <div class="col-status"><span class="icon-done">✅</span></div>
+
+        <div class="col-planned">Мінімізувати кількість запитів</div>
+        <div class="col-done">Promise.all — всі запити паралельно, прогрес в реальному часі</div>
+        <div class="col-status"><span class="icon-done">✅</span></div>
+      </div>
+    </div>
+
+    <!-- 4. DWG -->
+    <div class="block">
+      <div class="block-header">
+        <div class="block-num">4</div>
+        <div class="block-title">DWG рендер</div>
+        <span class="block-badge badge-partial">⚡ Частково — браузерне обмеження</span>
+      </div>
+      <div class="row-grid">
+        <div class="col-head col-planned-head">Планували</div>
+        <div class="col-head col-done-head">Зроблено</div>
+        <div class="col-head col-status-head">Статус</div>
+
+        <div class="col-planned">Більше типів елементів</div>
+        <div class="col-done">+ SPLINE, TEXT, MTEXT — підписи рендеряться на кресленні</div>
+        <div class="col-status"><span class="icon-done">✅</span></div>
+
+        <div class="col-planned">Розрізняти шари кольором</div>
+        <div class="col-done">Стіни=чорний/2px, розміри=синій, меблі=фіолетовий, осі=сірий</div>
+        <div class="col-status"><span class="icon-done">✅</span></div>
+
+        <div class="col-planned">Вища якість зображення</div>
+        <div class="col-done">1024→2048px, два проходи рендеру (геометрія → текст)</div>
+        <div class="col-status"><span class="icon-done">✅</span></div>
+
+        <div class="col-planned">Читати всі формати DWG</div>
+        <div class="col-done">libdxfrw WASM не підтримує AC1018 (FAILED_DECODE) — серверна конвертація відкладена</div>
+        <div class="col-status"><span class="icon-partial">⚠️</span></div>
+      </div>
+    </div>
+
+    <!-- 5. MD EXPORT -->
+    <div class="block">
+      <div class="block-header">
+        <div class="block-num">5</div>
+        <div class="block-title">MD Експорт для всіх ролей</div>
+        <span class="block-badge badge-planned">🔲 В черзі</span>
+      </div>
+      <div class="row-grid">
+        <div class="col-head col-planned-head">Планували</div>
+        <div class="col-head col-done-head">Зроблено</div>
+        <div class="col-head col-status-head">Статус</div>
+
+        <div class="col-planned">Один документ з секціями по ролях (Варіант 1)</div>
+        <div class="col-done">Кнопка MD копіює тільки вимоги по кімнатах</div>
+        <div class="col-status"><span class="icon-no">⬜</span></div>
+
+        <div class="col-planned">Включити роадмап, конфлікти, чеклист, посилання</div>
+        <div class="col-done">—</div>
+        <div class="col-status"><span class="icon-no">⬜</span></div>
+
+        <div class="col-planned">Джерела з тегами в MD документі</div>
+        <div class="col-done">—</div>
+        <div class="col-status"><span class="icon-no">⬜</span></div>
+      </div>
+    </div>
+
+    <!-- TODO -->
+    <div class="todo-section">
+      <div class="todo-header">Що далі — черга на v0.3</div>
+
+      <div class="todo-item">
+        <div class="todo-text"><strong>MD експорт v1</strong> — один документ з секціями: Для ПМ / Для Візуалізатора / Для АД / Для LLM (JSON блок). Замінити поточну кнопку MD.</div>
+        <span class="todo-tag tag-next">Наступний</span>
+      </div>
+
+      <div class="todo-item">
+        <div class="todo-text"><strong>MD експорт v2</strong> — включити роадмап, конфлікти, чеклист, посилання і джерела з тегами. Notion-сумісна структура.</div>
+        <span class="todo-tag tag-after">Після v1</span>
+      </div>
+
+      <div class="todo-item">
+        <div class="todo-text"><strong>Джерела → MD</strong> — теги які юзер виставив в розділі "Джерела" мають відображатись в MD документі поряд з відповідними вимогами.</div>
+        <span class="todo-tag tag-after">Після MD v1</span>
+      </div>
+
+      <div class="todo-item">
+        <div class="todo-text"><strong>DWG серверна конвертація</strong> — при деплої на VPS: LibreCAD headless або ezdxf → DWG→PDF → наш PDF парсер. Fallback коли libdxfrw не читає файл.</div>
+        <span class="todo-tag tag-server">При деплої</span>
+      </div>
+    </div>
+
+  </div>
+
+  <div class="footer">
+    <div class="footer-text">ТЗ TOOL · v0.2 · tz-tool_v0.2_roadmap_vs_done</div>
+    <div class="footer-text">Квітень 2026 · Claude Sonnet 4.6</div>
+  </div>
+
+</div>
+</body>
+</html>

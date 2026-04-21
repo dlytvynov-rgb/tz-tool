@@ -1,0 +1,631 @@
+<!DOCTYPE html>
+<html lang="uk">
+<head>
+<meta charset="UTF-8">
+<title>ТЗ Tool</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;700&display=swap" rel="stylesheet">
+<style>
+*, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
+
+:root {
+  --bg:        #060609;
+  --bg-card:   #0D0D12;
+  --bg-hover:  #12121A;
+  --border:    rgba(255,255,255,0.06);
+  --border-md: rgba(255,255,255,0.09);
+  --text-1:    #EDEDEF;
+  --text-2:    #8B8B99;
+  --text-3:    #46464F;
+  --indigo:    #6366F1;
+  --indigo-dim:#1E1E4A;
+  --blue:      #3B82F6;
+  --purple:    #8B5CF6;
+  --green:     #22C55E;
+  --red:       #EF4444;
+  --orange:    #F97316;
+}
+
+html, body { height: 100%; }
+
+body {
+  font-family: 'Inter', sans-serif;
+  background: var(--bg);
+  color: var(--text-1);
+  font-size: 13px;
+  line-height: 1.5;
+  overflow: hidden;
+}
+
+/* Noise overlay */
+body::before {
+  content: '';
+  position: fixed;
+  inset: 0;
+  background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noise'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noise)' opacity='0.03'/%3E%3C/svg%3E");
+  pointer-events: none;
+  z-index: 0;
+}
+
+/* ─── TOPBAR ─── */
+.topbar {
+  position: relative;
+  z-index: 10;
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding: 0 20px;
+  height: 46px;
+  background: rgba(6,6,9,0.9);
+  border-bottom: 1px solid var(--border);
+  backdrop-filter: blur(12px);
+}
+
+.logo {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.logo-icon {
+  width: 22px; height: 22px;
+  border-radius: 6px;
+  background: linear-gradient(135deg, var(--indigo), var(--purple));
+  display: flex; align-items: center; justify-content: center;
+  font-size: 11px; font-weight: 700; color: #fff;
+}
+.logo-text {
+  font-size: 13px; font-weight: 600;
+  letter-spacing: -0.01em;
+  color: var(--text-1);
+}
+
+.topbar-sep { width: 1px; height: 14px; background: var(--border-md); }
+
+.breadcrumb {
+  display: flex; align-items: center; gap: 6px;
+  font-size: 12px; color: var(--text-3);
+}
+.breadcrumb span { color: var(--text-2); }
+.breadcrumb-sep { color: var(--text-3); }
+
+.topbar-right { margin-left: auto; display: flex; gap: 6px; align-items: center; }
+
+.btn {
+  display: inline-flex; align-items: center; gap: 5px;
+  font-family: inherit;
+  font-size: 12px; font-weight: 500;
+  border-radius: 7px;
+  padding: 5px 13px;
+  cursor: pointer;
+  transition: all 150ms ease;
+  border: 1px solid transparent;
+}
+.btn-sm { padding: 4px 10px; font-size: 11px; }
+.btn-outline {
+  background: transparent;
+  border-color: var(--border-md);
+  color: var(--text-2);
+}
+.btn-outline:hover { border-color: rgba(255,255,255,0.15); color: var(--text-1); background: rgba(255,255,255,0.04); }
+
+.btn-white {
+  background: #fff;
+  color: #000;
+  font-weight: 600;
+}
+.btn-white:hover { background: #e8e8e8; }
+
+.btn-danger {
+  background: transparent;
+  border-color: rgba(239,68,68,0.3);
+  color: #F87171;
+}
+.btn-danger:hover { background: rgba(239,68,68,0.08); }
+
+/* Badge count */
+.badge-count {
+  background: rgba(239,68,68,0.15);
+  color: #F87171;
+  border-radius: 4px;
+  padding: 1px 6px;
+  font-size: 10px;
+  font-family: 'JetBrains Mono', monospace;
+  font-weight: 700;
+}
+
+/* ─── LAYOUT ─── */
+.layout {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  height: calc(100vh - 46px);
+}
+
+/* ─── SIDEBAR ─── */
+.sidebar {
+  width: 196px;
+  flex-shrink: 0;
+  background: rgba(8,8,12,0.6);
+  border-right: 1px solid var(--border);
+  display: flex;
+  flex-direction: column;
+  overflow-y: auto;
+}
+
+.view-switch {
+  display: grid;
+  grid-template-columns: 1fr 1fr 1fr;
+  gap: 3px;
+  padding: 10px;
+  border-bottom: 1px solid var(--border);
+}
+.vs-btn {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 7px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  padding: 5px 2px;
+  border: none;
+  border-radius: 5px;
+  cursor: pointer;
+  transition: all 150ms;
+  background: transparent;
+  color: var(--text-3);
+}
+.vs-btn:hover { background: rgba(255,255,255,0.04); color: var(--text-2); }
+.vs-btn.active { background: var(--indigo); color: #fff; }
+
+.sidebar-section { padding: 14px 0 4px; }
+.sidebar-label {
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 0.14em;
+  color: var(--text-3);
+  padding: 0 14px;
+  margin-bottom: 4px;
+  text-transform: uppercase;
+  font-family: 'JetBrains Mono', monospace;
+}
+
+.s-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 6px 14px;
+  cursor: pointer;
+  border-left: 2px solid transparent;
+  transition: all 120ms;
+  position: relative;
+}
+.s-item:hover { background: rgba(255,255,255,0.03); }
+.s-item.active {
+  border-left-color: var(--indigo);
+  background: rgba(99,102,241,0.07);
+}
+.s-item-label { font-size: 12px; color: var(--text-2); }
+.s-item.active .s-item-label { color: var(--text-1); }
+.s-item-n {
+  font-size: 9px;
+  font-family: 'JetBrains Mono', monospace;
+  color: var(--text-3);
+}
+
+.s-divider { height: 1px; background: var(--border); margin: 6px 10px; }
+
+.s-item-red { border-left-color: transparent; }
+.s-item-red .s-item-label { color: #F87171; }
+.s-item-red .s-item-n { color: rgba(248,113,113,0.5); }
+.s-item-red:hover { background: rgba(239,68,68,0.05); }
+
+.s-item-orange .s-item-label { color: #FB923C; }
+.s-item-orange .s-item-n { color: rgba(251,146,60,0.5); }
+.s-item-orange:hover { background: rgba(249,115,22,0.05); }
+
+/* ─── MAIN ─── */
+.main {
+  flex: 1;
+  overflow: auto;
+  padding: 20px;
+}
+
+/* Filters */
+.filters {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 16px;
+}
+
+.input-search {
+  height: 34px;
+  background: rgba(255,255,255,0.04);
+  border: 1px solid var(--border-md);
+  border-radius: 8px;
+  padding: 0 12px;
+  font-family: inherit;
+  font-size: 12px;
+  color: var(--text-1);
+  outline: none;
+  width: 210px;
+  transition: all 150ms;
+}
+.input-search::placeholder { color: var(--text-3); }
+.input-search:focus { border-color: rgba(99,102,241,0.5); background: rgba(99,102,241,0.04); box-shadow: 0 0 0 3px rgba(99,102,241,0.1); }
+
+.select-filter {
+  height: 34px;
+  background: rgba(255,255,255,0.04);
+  border: 1px solid var(--border-md);
+  border-radius: 8px;
+  padding: 0 32px 0 11px;
+  font-family: inherit;
+  font-size: 12px;
+  color: var(--text-2);
+  outline: none;
+  cursor: pointer;
+  appearance: none;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6' fill='none'%3E%3Cpath d='M1 1l4 4 4-4' stroke='%2346464F' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 10px center;
+  transition: all 150ms;
+}
+.select-filter:focus { border-color: rgba(99,102,241,0.5); color: var(--text-1); }
+
+.filter-meta {
+  margin-left: auto;
+  font-size: 11px;
+  font-family: 'JetBrains Mono', monospace;
+  color: var(--text-3);
+}
+
+/* ─── TABLE CARD ─── */
+.table-card {
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  overflow: hidden;
+  position: relative;
+}
+
+/* Top glow line — clerk signature */
+.table-card::before {
+  content: '';
+  position: absolute;
+  top: 0; left: 15%; right: 15%;
+  height: 1px;
+  background: linear-gradient(90deg, transparent, rgba(99,102,241,0.4), transparent);
+  pointer-events: none;
+}
+
+table { width: 100%; border-collapse: collapse; }
+
+thead tr { border-bottom: 1px solid var(--border); }
+th {
+  padding: 11px 16px;
+  text-align: left;
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 0.13em;
+  text-transform: uppercase;
+  color: var(--text-3);
+  font-family: 'JetBrains Mono', monospace;
+  cursor: pointer;
+  user-select: none;
+  white-space: nowrap;
+  transition: color 150ms;
+}
+th:hover { color: var(--text-2); }
+th.sorted { color: var(--indigo); }
+.sort-arrow { margin-left: 4px; opacity: 0.7; }
+
+tbody tr {
+  border-bottom: 1px solid var(--border);
+  transition: background 100ms ease;
+  cursor: pointer;
+}
+tbody tr:last-child { border-bottom: none; }
+tbody tr:hover { background: rgba(255,255,255,0.025); }
+tbody tr:hover .row-act { opacity: 1; }
+tbody tr.row-active {
+  background: rgba(99,102,241,0.06);
+  box-shadow: inset 3px 0 0 var(--indigo);
+}
+
+td { padding: 10px 16px; vertical-align: middle; }
+
+/* TYPE BADGE */
+.tag {
+  display: inline-flex; align-items: center;
+  font-size: 9px; font-weight: 700;
+  font-family: 'JetBrains Mono', monospace;
+  letter-spacing: 0.07em;
+  padding: 3px 8px;
+  border-radius: 5px;
+  border: 1px solid transparent;
+  white-space: nowrap;
+}
+.tag-todo     { background: rgba(59,130,246,0.12); color: #60A5FA; border-color: rgba(59,130,246,0.2); }
+.tag-material { background: rgba(139,92,246,0.12); color: #A78BFA; border-color: rgba(139,92,246,0.2); }
+.tag-style    { background: rgba(34,197,94,0.1);   color: #4ADE80; border-color: rgba(34,197,94,0.2); }
+.tag-dimension{ background: rgba(249,115,22,0.1);  color: #FB923C; border-color: rgba(249,115,22,0.2); }
+.tag-image    { background: rgba(20,184,166,0.1);  color: #2DD4BF; border-color: rgba(20,184,166,0.2); }
+.tag-comment  { background: rgba(113,113,122,0.1); color: #71717A; border-color: rgba(113,113,122,0.15); }
+.tag-conflict { background: rgba(239,68,68,0.1);   color: #F87171; border-color: rgba(239,68,68,0.2); }
+.tag-missing  { background: rgba(239,68,68,0.08);  color: #FCA5A5; border-color: rgba(239,68,68,0.15); }
+.tag-unclear  { background: rgba(249,115,22,0.1);  color: #FDBA74; border-color: rgba(249,115,22,0.2); }
+
+/* CONTENT */
+.c-wrap { display: flex; align-items: flex-start; gap: 10px; max-width: 400px; }
+.c-thumb {
+  width: 34px; height: 34px;
+  border-radius: 6px;
+  flex-shrink: 0;
+  border: 1px solid var(--border-md);
+  display: flex; align-items: center; justify-content: center;
+  font-size: 15px;
+  background: rgba(255,255,255,0.03);
+}
+.c-text { font-size: 12px; color: var(--text-1); line-height: 1.45; }
+.c-quote {
+  font-size: 10px; color: var(--text-3);
+  font-style: italic;
+  font-family: 'JetBrains Mono', monospace;
+  margin-top: 2px;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  max-width: 320px;
+}
+
+.c-cat  { font-size: 11px; color: var(--text-3); white-space: nowrap; }
+.c-room { font-size: 11px; color: var(--text-2); white-space: nowrap; }
+
+/* STAGE */
+.stage {
+  font-size: 9px; font-weight: 600;
+  font-family: 'JetBrains Mono', monospace;
+  padding: 3px 7px; border-radius: 4px;
+  white-space: nowrap;
+}
+.st-mod  { color: #FB923C; background: rgba(249,115,22,0.1); }
+.st-tex  { color: #A78BFA; background: rgba(139,92,246,0.1); }
+.st-lgt  { color: #FCD34D; background: rgba(252,211,77,0.08); }
+.st-cam  { color: #60A5FA; background: rgba(59,130,246,0.1); }
+.st-post { color: #2DD4BF; background: rgba(20,184,166,0.1); }
+.st-del  { color: #71717A; background: rgba(113,113,122,0.1); }
+
+/* SOURCE */
+.src-btn {
+  font-size: 9px; font-weight: 500;
+  font-family: 'JetBrains Mono', monospace;
+  color: rgba(99,102,241,0.8);
+  background: rgba(99,102,241,0.07);
+  border: 1px solid rgba(99,102,241,0.15);
+  border-radius: 5px;
+  padding: 3px 9px;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: all 150ms;
+}
+.src-btn:hover { background: rgba(99,102,241,0.13); border-color: rgba(99,102,241,0.35); color: #818CF8; }
+.src-btn-conflict { color: rgba(239,68,68,0.8); background: rgba(239,68,68,0.07); border-color: rgba(239,68,68,0.15); }
+.src-btn-conflict:hover { background: rgba(239,68,68,0.12); border-color: rgba(239,68,68,0.3); }
+
+/* ROW ACTIONS */
+.row-act { display: flex; gap: 3px; opacity: 0; transition: opacity 150ms; }
+.act-btn {
+  width: 24px; height: 24px;
+  display: flex; align-items: center; justify-content: center;
+  background: rgba(255,255,255,0.04);
+  border: 1px solid var(--border-md);
+  border-radius: 5px;
+  cursor: pointer;
+  font-size: 11px;
+  color: var(--text-3);
+  transition: all 120ms;
+}
+.act-btn:hover { background: rgba(255,255,255,0.08); color: var(--text-1); border-color: rgba(255,255,255,0.12); }
+</style>
+</head>
+<body>
+
+<!-- TOPBAR -->
+<div class="topbar">
+  <div class="logo">
+    <div class="logo-icon">Т</div>
+    <span class="logo-text">ТЗ Tool</span>
+  </div>
+  <div class="topbar-sep"></div>
+  <div class="breadcrumb">
+    <span>Проекти</span>
+    <span class="breadcrumb-sep">/</span>
+    <span style="color:var(--text-2)">Квартира Шевченка 12</span>
+    <span class="breadcrumb-sep">/</span>
+    <span>Таблиця</span>
+  </div>
+  <div class="topbar-right">
+    <button class="btn btn-sm btn-outline">MD</button>
+    <button class="btn btn-sm btn-outline">PDF</button>
+    <button class="btn btn-sm btn-danger">Запит <span class="badge-count">3</span></button>
+    <button class="btn btn-sm btn-white">↓ Excel</button>
+  </div>
+</div>
+
+<div class="layout">
+
+  <!-- SIDEBAR -->
+  <div class="sidebar">
+    <div class="view-switch">
+      <button class="vs-btn">КІМНАТИ</button>
+      <button class="vs-btn">СТАДІЇ</button>
+      <button class="vs-btn active">ТАБЛ.</button>
+    </div>
+
+    <div class="sidebar-section">
+      <div class="sidebar-label">Кімнати</div>
+      <div class="s-item active"><span class="s-item-label">Всі</span><span class="s-item-n">34</span></div>
+      <div class="s-item"><span class="s-item-label">Загальне</span><span class="s-item-n">12</span></div>
+      <div class="s-item"><span class="s-item-label">Вітальня</span><span class="s-item-n">8</span></div>
+      <div class="s-item"><span class="s-item-label">Спальня</span><span class="s-item-n">6</span></div>
+      <div class="s-item"><span class="s-item-label">Кухня</span><span class="s-item-n">5</span></div>
+      <div class="s-item"><span class="s-item-label">Ванна</span><span class="s-item-n">3</span></div>
+    </div>
+
+    <div class="s-divider"></div>
+
+    <div class="sidebar-section">
+      <div class="sidebar-label">Статус</div>
+      <div class="s-item s-item-red"><span class="s-item-label">⚡ Конфлікти</span><span class="s-item-n">2</span></div>
+      <div class="s-item s-item-orange"><span class="s-item-label">⚠ SOW</span><span class="s-item-n">3</span></div>
+    </div>
+  </div>
+
+  <!-- MAIN -->
+  <div class="main">
+
+    <div class="filters">
+      <input class="input-search" type="text" placeholder="Пошук...">
+      <select class="select-filter">
+        <option>Всі типи</option>
+        <option>TODO</option><option>МАТЕРІАЛ</option><option>СТИЛЬ</option>
+        <option>ЗОБРАЖЕННЯ</option><option>РОЗМІР</option><option>КОНФЛІКТ</option><option>ВІДСУТНЄ</option>
+      </select>
+      <select class="select-filter">
+        <option>Всі кімнати</option>
+        <option>Загальне</option><option>Вітальня</option><option>Спальня</option><option>Кухня</option>
+      </select>
+      <select class="select-filter">
+        <option>Всі стадії</option>
+        <option>Моделінг</option><option>Текстуринг</option><option>Світло</option>
+        <option>Камери</option><option>Пост-продакшн</option><option>Видача</option>
+      </select>
+      <span class="filter-meta">34 рядки</span>
+    </div>
+
+    <div class="table-card">
+      <table>
+        <thead>
+          <tr>
+            <th style="width:115px" class="sorted">ТИП <span class="sort-arrow">↑</span></th>
+            <th>ЗМІСТ</th>
+            <th style="width:140px">КАТЕГОРІЯ</th>
+            <th style="width:110px">КІМНАТА</th>
+            <th style="width:115px">СТАДІЯ</th>
+            <th style="width:120px">ДЖЕРЕЛО</th>
+            <th style="width:72px"></th>
+          </tr>
+        </thead>
+        <tbody>
+
+          <tr class="row-active">
+            <td><span class="tag tag-material">МАТЕРІАЛ</span></td>
+            <td><div class="c-wrap">
+              <div class="c-thumb">🪨</div>
+              <div><div class="c-text">Підлога — дуб натуральний, масив, світлий тон</div>
+              <div class="c-quote">"дубовий масив, світлий, матове покриття"</div></div>
+            </div></td>
+            <td><span class="c-cat">Матеріали та текстури</span></td>
+            <td><span class="c-room">Вітальня</span></td>
+            <td><span class="stage st-tex">Текстуринг</span></td>
+            <td><button class="src-btn">brief.pdf p.3</button></td>
+            <td><div class="row-act"><div class="act-btn">✏</div><div class="act-btn">✕</div></div></td>
+          </tr>
+
+          <tr>
+            <td><span class="tag tag-image">ЗОБРАЖЕННЯ</span></td>
+            <td><div class="c-wrap">
+              <div class="c-thumb" style="background:rgba(20,184,166,0.08)">🖼</div>
+              <div><div class="c-text">Референс стилю — скандинавський мінімалізм, нейтральні тони</div>
+              <div class="c-quote">"щось як на Pinterest, світло і простір"</div></div>
+            </div></td>
+            <td><span class="c-cat">Сезон / атмосфера</span></td>
+            <td><span class="c-room">Загальне</span></td>
+            <td><span class="stage st-lgt">Світло</span></td>
+            <td><button class="src-btn">moodboard.pdf p.1</button></td>
+            <td><div class="row-act"><div class="act-btn">✏</div><div class="act-btn">✕</div></div></td>
+          </tr>
+
+          <tr>
+            <td><span class="tag tag-todo">TODO</span></td>
+            <td><div class="c-wrap">
+              <div><div class="c-text">Диван — Minotti Laurence, 3-місний, тканина бежева</div>
+              <div class="c-quote">"диван Minotti, бежева тканина, 3 місця"</div></div>
+            </div></td>
+            <td><span class="c-cat">Меблі та моделі</span></td>
+            <td><span class="c-room">Вітальня</span></td>
+            <td><span class="stage st-mod">Моделінг</span></td>
+            <td><button class="src-btn">brief.pdf p.5</button></td>
+            <td><div class="row-act"><div class="act-btn">✏</div><div class="act-btn">✕</div></div></td>
+          </tr>
+
+          <tr>
+            <td><span class="tag tag-dimension">РОЗМІР</span></td>
+            <td><div class="c-wrap">
+              <div><div class="c-text">Вітальня: 6.2 × 4.8 м, висота стелі 2.9 м</div>
+              <div class="c-quote">витягнуто з плану поверху</div></div>
+            </div></td>
+            <td><span class="c-cat">Креслення та планування</span></td>
+            <td><span class="c-room">Вітальня</span></td>
+            <td><span class="stage st-mod">Моделінг</span></td>
+            <td><button class="src-btn">plan.dwg</button></td>
+            <td><div class="row-act"><div class="act-btn">✏</div><div class="act-btn">✕</div></div></td>
+          </tr>
+
+          <tr>
+            <td><span class="tag tag-style">СТИЛЬ</span></td>
+            <td><div class="c-wrap">
+              <div><div class="c-text">Час доби — золота година, 17:00–18:00, тепле бокове світло</div>
+              <div class="c-quote">"золота година, сонце збоку"</div></div>
+            </div></td>
+            <td><span class="c-cat">Тип освітлення</span></td>
+            <td><span class="c-room">Загальне</span></td>
+            <td><span class="stage st-lgt">Світло</span></td>
+            <td><button class="src-btn">brief.pdf p.2</button></td>
+            <td><div class="row-act"><div class="act-btn">✏</div><div class="act-btn">✕</div></div></td>
+          </tr>
+
+          <tr>
+            <td><span class="tag tag-conflict">КОНФЛІКТ</span></td>
+            <td><div class="c-wrap">
+              <div><div class="c-text">Колір стін вітальні: бриф — «темно-сірі», мудборд — світлі</div>
+              <div class="c-quote">Питання: який варіант пріоритетний?</div></div>
+            </div></td>
+            <td><span class="c-cat">Конфлікт</span></td>
+            <td><span class="c-room">Вітальня</span></td>
+            <td><span class="c-cat">—</span></td>
+            <td><button class="src-btn src-btn-conflict">2 джерела</button></td>
+            <td><div class="row-act"><div class="act-btn">✏</div><div class="act-btn">✕</div></div></td>
+          </tr>
+
+          <tr>
+            <td><span class="tag tag-missing">ВІДСУТНЄ</span></td>
+            <td><div class="c-wrap">
+              <div><div class="c-text">Ракурси камер — не вказано жодних переваг</div>
+              <div class="c-quote">дефолт: 3 ракурси, висота ока 1.6 м</div></div>
+            </div></td>
+            <td><span class="c-cat">SOW відсутнє</span></td>
+            <td><span class="c-room">—</span></td>
+            <td><span class="stage st-cam">Камери</span></td>
+            <td><span class="c-cat">—</span></td>
+            <td><div class="row-act"><div class="act-btn">✏</div><div class="act-btn">✕</div></div></td>
+          </tr>
+
+          <tr>
+            <td><span class="tag tag-todo">TODO</span></td>
+            <td><div class="c-wrap">
+              <div><div class="c-text">Формат видачі — JPEG 4K, 300 DPI, для друку</div>
+              <div class="c-quote">"якість для поліграфії"</div></div>
+            </div></td>
+            <td><span class="c-cat">Вимоги клієнта</span></td>
+            <td><span class="c-room">Загальне</span></td>
+            <td><span class="stage st-del">Видача</span></td>
+            <td><button class="src-btn">brief.pdf p.7</button></td>
+            <td><div class="row-act"><div class="act-btn">✏</div><div class="act-btn">✕</div></div></td>
+          </tr>
+
+        </tbody>
+      </table>
+    </div>
+  </div>
+</div>
+
+</body>
+</html>

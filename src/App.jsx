@@ -909,7 +909,7 @@ async function preProcessLargeFiles(files, apiKey, onStatus) {
 
 // ─── SOW Templates ────────────────────────────────────────────────────────────
 const SOW_TEMPLATES = {
-  "Інтер'єр житловий": {
+  "Residential Interior": {
     items: [
       "Тип простору (житловий)",
       "Креслення плану з розміщенням меблів (DWG або PDF) — обов'язково",
@@ -942,7 +942,7 @@ const SOW_TEMPLATES = {
       "Наявність людей": "без людей",
     },
   },
-  "Інтер'єр комерційний": {
+  "Commercial Interior": {
     items: [
       "Тип простору (комерційний)",
       "Креслення плану з зонуванням та розміщенням обладнання (DWG або PDF) — обов'язково",
@@ -975,7 +975,7 @@ const SOW_TEMPLATES = {
       "Наявність людей на рендері": "без людей",
     },
   },
-  "Екстер'єр / фасад": {
+  "Exterior": {
     items: [
       "Тип об'єкту (житловий / комерційний)",
       "Креслення: плани, фасади, розрізи (DWG або PDF) — обов'язково",
@@ -1019,7 +1019,7 @@ const SOW_TEMPLATES = {
       "Aerial: Автомобілі": "статичні",
     },
   },
-  "Лайфстайл рендеринг": {
+  "Lifestyle": {
     items: [
       "Тип сцени (інтер'єр / вулиця)",
       "Тип workflow: Our Vision / Your Vision / Template",
@@ -1059,7 +1059,7 @@ const SOW_TEMPLATES = {
       "Настрій / час доби (outdoor)": "sunset (захід сонця)",
     },
   },
-  "Silo рендеринг": {
+  "Silo": {
     items: [
       "3D-модель продукту: надає клієнт (.3ds) або моделюємо з нуля",
       "Якщо модель від клієнта: відповідність референсам, відсутність дефектів геометрії",
@@ -1086,7 +1086,7 @@ const SOW_TEMPLATES = {
       "Тінь": "під об'єктом",
     },
   },
-  "Мастерплан": {
+  "Masterplan": {
     items: [
       "Генплан з масштабом",
       "Типологія будівель",
@@ -1098,7 +1098,7 @@ const SOW_TEMPLATES = {
     ],
     defaults: {},
   },
-  "Продуктова візуалізація": {
+  "Product Rendering": {
     items: [
       "3D-модель продукту: надає клієнт (.3ds / .fbx / .obj) або моделюємо з нуля",
       "Якщо модель від клієнта: відповідність референсам, відсутність дефектів геометрії",
@@ -1132,7 +1132,7 @@ const SOW_TEMPLATES = {
       "Настрій / час доби": "день",
     },
   },
-  "3D Моделювання продукту": {
+  "3D Modeling": {
     items: [
       "Призначення моделі: рендеринг / AR / VR / анімація / 3D-друк",
       "Ліміт полігонів: без ліміту / до [X]",
@@ -1172,7 +1172,7 @@ const SOW_TEMPLATES = {
       "AR: Матеріал": "PBR",
     },
   },
-  "Флорплан": {
+  "Floorplan": {
     items: [
       "Креслення плану (DWG або PDF) — обов'язково",
       "Меблювання: з меблями / без / мінімальне",
@@ -2838,8 +2838,9 @@ ${sowTemplatesText}
 
         {/* Project type selector */}
         <div style={{ marginBottom: 12 }}>
-          <div style={{ fontSize: 9, fontFamily: "monospace", color: "#aaa", letterSpacing: "0.1em", marginBottom: 6 }}>
-            ТИП ПРОЕКТУ {selectedTypes.length === 0 && <span style={{ color: "#ccc" }}>— AI визначить автоматично</span>}
+          <div style={{ fontSize: 9, fontFamily: "monospace", color: "#888", letterSpacing: "0.1em", marginBottom: 6 }}>
+            ОБЕРІТЬ ТИП ПРОЕКТУ
+            {selectedTypes.length === 0 && <span style={{ color: "#ccc", fontWeight: 400, letterSpacing: 0 }}> — якщо тип невідомий, AI визначить автоматично</span>}
           </div>
           <div style={{ display: "flex", flexWrap: "wrap", gap: 5 }}>
             {Object.keys(SOW_TEMPLATES).map(t => {

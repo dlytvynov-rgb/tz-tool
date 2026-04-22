@@ -1202,10 +1202,12 @@ const SOW_TEMPLATES = {
 };
 
 const CAT_COLOR = {
-  "Матеріали та текстури": "#8e44ad", "Меблі та моделі": "#2980b9",
-  "Сезон / атмосфера": "#27ae60",    "Тип освітлення": "#f39c12",
-  "Креслення та планування": "#e67e22","Логотип / написи": "#16a085",
-  "Вимоги клієнта": "#c0392b",        "Специфічні запити": "#7f8c8d",
+  "Референси": "#27ae60",
+  "Матеріали та оздоблення": "#8e44ad",
+  "Меблі та предмети": "#2980b9",
+  "Креслення": "#e67e22",
+  "Технічні вимоги": "#16a085",
+  "Вимоги клієнта": "#c0392b",
 };
 
 const PRODUCTION_STAGES = ["Моделінг", "Текстуринг", "Світло", "Камери", "Пост-продакшн", "Видача"];
@@ -1335,37 +1337,24 @@ function DocViewer({ source, initialPage, itemText, onClose }) {
 function TzItem({ item, onEdit, onRemove, onOpenRef, onOpenDoc }) {
   const [editing, setEditing] = useState(false);
   const ref = item.imgRef;
+  const borderColor = CAT_COLOR[item.category] || "#ddd";
   return (
-    <div style={{ display: "flex", alignItems: "flex-start", gap: 8, padding: "5px 0", borderBottom: "1px solid #f2f0ec" }}>
-      <div style={{ width: 4, height: 4, borderRadius: "50%", background: CAT_COLOR[item.category] || "#ccc", flexShrink: 0, marginTop: 7 }} />
-      {/* Ref thumbnail */}
-      {ref?.preview && (
-        <div onClick={() => onOpenRef(ref, item.text)} title={`${ref.fileLabel} · стор. ${ref.pageNum}`}
-          style={{ width: 44, height: 33, flexShrink: 0, cursor: "pointer", borderRadius: 3, overflow: "hidden", border: "1px solid #e0ddd8", position: "relative", marginTop: 1 }}>
-          <img src={ref.preview} style={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }} />
-          <div style={{ position: "absolute", inset: 0, background: "rgba(0,0,0,0)", transition: "background 0.15s" }}
-            onMouseEnter={e => e.currentTarget.style.background = "rgba(0,0,0,0.25)"}
-            onMouseLeave={e => e.currentTarget.style.background = "rgba(0,0,0,0)"}>
-            <div style={{ position: "absolute", bottom: 2, right: 2, fontSize: 7, fontFamily: "monospace", color: "#fff", background: "rgba(0,0,0,0.5)", padding: "0 2px", borderRadius: 1 }}>
-              с.{ref.pageNum}
-            </div>
-          </div>
-        </div>
-      )}
+    <div style={{ display: "flex", alignItems: "flex-start", gap: 10, padding: "10px 12px", borderBottom: "1px solid #f0ede8", borderLeft: `3px solid ${borderColor}` }}>
       <div style={{ flex: 1, minWidth: 0 }}>
         {editing
           ? <textarea autoFocus value={item.text} onChange={e => onEdit(item.id, e.target.value)} onBlur={() => setEditing(false)}
               rows={Math.max(2, Math.ceil(item.text.length / 80))}
-              style={{ width: "100%", border: "1px solid #e0ddd8", borderRadius: 4, fontSize: 12, color: "#222", lineHeight: 1.5, fontFamily: "inherit", padding: "3px 6px", outline: "none", background: "#fafafa", resize: "vertical" }} />
-          : <div onClick={() => setEditing(true)} style={{ fontSize: 12, color: "#222", lineHeight: 1.55, cursor: "text", padding: "1px 0" }}>{item.text}</div>
+              style={{ width: "100%", border: "1px solid #e0ddd8", borderRadius: 4, fontSize: 13, color: "#222", lineHeight: 1.5, fontFamily: "inherit", padding: "3px 6px", outline: "none", background: "#fafafa", resize: "vertical" }} />
+          : <>
+              <div onClick={() => setEditing(true)} style={{ fontSize: 13, color: "#1a1a1a", fontStyle: item.quote ? "italic" : "normal", lineHeight: 1.55, cursor: "text", marginBottom: item.quote ? 5 : 0 }}>
+                {item.quote || item.text}
+              </div>
+              {item.quote && (
+                <div style={{ fontSize: 11, color: "#666", lineHeight: 1.5, marginBottom: 5 }}>{item.text}</div>
+              )}
+            </>
         }
-        {item.quote && (
-          <div style={{ fontSize: 10, color: "#999", fontStyle: "italic", borderLeft: "2px solid #e8e6e1", paddingLeft: 7, marginTop: 4, lineHeight: 1.55 }}>
-            "{item.quote}"
-          </div>
-        )}
         <div style={{ display: "flex", gap: 6, marginTop: 4, flexWrap: "wrap", alignItems: "center" }}>
-          {item.stage && <span style={{ fontSize: 8, fontFamily: "monospace", color: STAGE_COLOR[item.stage] || "#888", border: `1px solid ${STAGE_COLOR[item.stage] || "#888"}`, padding: "1px 5px", borderRadius: 3 }}>{item.stage}</span>}
           {item.source && <span style={{ fontSize: 9, color: "#bbb", fontFamily: "monospace" }}>{item.source}</span>}
           {ref && <span onClick={() => onOpenRef(ref, item.text)} style={{ fontSize: 9, color: "#3498db", fontFamily: "monospace", cursor: "pointer", textDecoration: "underline dotted" }} title="Відкрити джерело">↗ {ref.fileLabel}{ref.pageNum > 1 ? ` стор.${ref.pageNum}` : ""}</span>}
           {!ref && item.imgRefLabel && <span onClick={() => onOpenDoc?.(item.imgRefLabel, item.text)} style={{ fontSize: 9, color: "#e67e22", fontFamily: "monospace", cursor: onOpenDoc ? "pointer" : "default", textDecoration: onOpenDoc ? "underline dotted" : "none" }} title={`Відкрити: ${item.imgRefLabel}`}>⚠ {item.imgRefLabel}</span>}
@@ -1379,6 +1368,19 @@ function TzItem({ item, onEdit, onRemove, onOpenRef, onOpenDoc }) {
           ))}
         </div>
       </div>
+      {ref?.preview && (
+        <div onClick={() => onOpenRef(ref, item.text)} title={`${ref.fileLabel} · стор. ${ref.pageNum}`}
+          style={{ width: 56, height: 42, flexShrink: 0, cursor: "pointer", borderRadius: 3, overflow: "hidden", border: "1px solid #e0ddd8", position: "relative" }}>
+          <img src={ref.preview} style={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }} />
+          <div style={{ position: "absolute", inset: 0, background: "rgba(0,0,0,0)", transition: "background 0.15s" }}
+            onMouseEnter={e => e.currentTarget.style.background = "rgba(0,0,0,0.25)"}
+            onMouseLeave={e => e.currentTarget.style.background = "rgba(0,0,0,0)"}>
+            <div style={{ position: "absolute", bottom: 2, right: 2, fontSize: 7, fontFamily: "monospace", color: "#fff", background: "rgba(0,0,0,0.5)", padding: "0 2px", borderRadius: 1 }}>
+              с.{ref.pageNum}
+            </div>
+          </div>
+        </div>
+      )}
       <button onClick={() => onRemove(item.id)} style={{ background: "none", border: "none", color: "#ddd", cursor: "pointer", fontSize: 14, flexShrink: 0, lineHeight: 1, padding: "2px 4px" }} title="Видалити">×</button>
     </div>
   );
@@ -1909,7 +1911,7 @@ function TzReviewStep({ projectType, rooms, tzByRoom, sowMissing, sowUnclear, de
 
       {/* ── SOWa / NIQ tabs ── */}
       <div style={{ background: "#fff", borderBottom: "1px solid #e8e6e1", display: "flex", padding: "0 20px", flexShrink: 0 }}>
-        {[["sowa", `SOWa · ${totalItems}`], ["niq", `NIQ · ${(sowMissing?.length || 0) + (sowUnclear?.length || 0) + (conflicts?.length || 0)}`]].map(([id, label]) => (
+        {[["sowa", `SOWa · ${totalItems}`], ["niq", `NIQ · ${(sowMissing?.length || 0) + (sowUnclear?.length || 0) + (conflicts?.length || 0)}`], ["spec", `SPEC · ${deliverySpec?.length || 0}`]].map(([id, label]) => (
           <button key={id} onClick={() => setSowPage(id)} style={{ fontSize: 10, fontFamily: "monospace", fontWeight: 700, letterSpacing: "0.08em", padding: "10px 18px", border: "none", borderBottom: sowPage === id ? "2px solid #1a1a1a" : "2px solid transparent", background: "transparent", cursor: "pointer", color: sowPage === id ? "#1a1a1a" : "#aaa" }}>{label.toUpperCase()}</button>
         ))}
       </div>
@@ -1919,7 +1921,7 @@ function TzReviewStep({ projectType, rooms, tzByRoom, sowMissing, sowUnclear, de
 
         {/* ── SOWa ── */}
         {sowPage === "sowa" && (() => {
-          const CATS = ["Матеріали та текстури", "Меблі та моделі", "Сезон / атмосфера", "Тип освітлення", "Креслення та планування", "Логотип / написи", "Вимоги клієнта", "Специфічні запити"];
+          const CATS = ["Референси", "Матеріали та оздоблення", "Меблі та предмети", "Креслення", "Технічні вимоги", "Вимоги клієнта"];
           const byCategory = {};
           allItems.forEach(item => { const cat = item.category || "Інше"; if (!byCategory[cat]) byCategory[cat] = []; byCategory[cat].push(item); });
           const sortedCats = [...CATS.filter(c => byCategory[c]), ...Object.keys(byCategory).filter(c => !CATS.includes(c) && byCategory[c])];
@@ -1997,6 +1999,27 @@ function TzReviewStep({ projectType, rooms, tzByRoom, sowMissing, sowUnclear, de
                 </div>
               )}
             </>
+          );
+        })()}
+
+        {/* ── SPEC ── */}
+        {sowPage === "spec" && (() => {
+          if (!deliverySpec?.length) return <div style={{ color: "#bbb", fontFamily: "monospace", fontSize: 11, padding: "24px 0" }}>SPEC не побудовано — запустіть аналіз</div>;
+          return (
+            <div style={{ background: "#fff", borderRadius: 6, border: "1px solid #e8e6e1", overflow: "hidden" }}>
+              {deliverySpec.map((item, i) => (
+                <div key={i} style={{ display: "flex", alignItems: "center", padding: "8px 14px", background: i % 2 === 0 ? "#fafafa" : "#fff", borderBottom: i < deliverySpec.length - 1 ? "1px solid #f0f0f0" : "none", opacity: item.source === "unclear" ? 0.5 : 1 }}>
+                  <span style={{ fontSize: 11, color: item.source === "brief" ? "#27ae60" : item.source === "unclear" ? "#e67e22" : "#aaa", fontFamily: "monospace", width: 14, flexShrink: 0, fontWeight: 700 }}>
+                    {item.source === "brief" ? "✓" : item.source === "unclear" ? "⚠" : "·"}
+                  </span>
+                  <span style={{ fontSize: 11, color: "#555", fontFamily: "monospace", width: 220, flexShrink: 0, paddingLeft: 6 }}>{item.key}</span>
+                  <span style={{ fontSize: 12, color: item.source === "unclear" ? "#bbb" : "#1a1a1a", flex: 1 }}>{item.value || "—"}</span>
+                  <span style={{ fontSize: 9, fontFamily: "monospace", whiteSpace: "nowrap", color: item.source === "brief" ? "#27ae60" : item.source === "unclear" ? "#e67e22" : "#bbb" }}>
+                    {item.source === "brief" ? "з брифу" : item.source === "default" ? "дефолт" : "уточнити"}
+                  </span>
+                </div>
+              ))}
+            </div>
           );
         })()}
       </div>
@@ -2328,6 +2351,7 @@ export default function App() {
   const [stage, setStage] = useState("upload"); // "upload" | "review"
 
   const [tzProjectType, setTzProjectType] = useState("");
+  const [selectedTypes, setSelectedTypes] = useState([]);
   const [tzRooms, setTzRooms] = useState([]);
   const [tzByRoom, setTzByRoom] = useState({});
   const [tzAnnotation, setTzAnnotation] = useState("");
@@ -2537,7 +2561,10 @@ Return ONLY valid JSON in exactly the same structure with translated values:
     const imgIndex = buildImgIndex();
 
     const sowTypes = Object.keys(SOW_TEMPLATES).join(" | ");
-    const sowTemplatesText = Object.entries(SOW_TEMPLATES)
+    const activeTemplateEntries = selectedTypes.length > 0
+      ? Object.entries(SOW_TEMPLATES).filter(([t]) => selectedTypes.includes(t))
+      : Object.entries(SOW_TEMPLATES);
+    const sowTemplatesText = activeTemplateEntries
       .map(([type, { items, defaults }]) => {
         let text = `${type}:\n${items.map(i => `  - ${i}`).join("\n")}`;
         if (defaults && Object.keys(defaults).length > 0) {
@@ -2571,7 +2598,9 @@ ${briefText.trim() || "(дивись прикріплені матеріали)"
 ВАЖЛИВО: для кожної сторінки надано "витягнутий текст" — використовуй його як першочергове джерело для розмірів, назв, специфікацій та чисел. Зображення доповнює текст.
 
 ЗАВДАННЯ 1 — project_type:
-Один варіант: ${sowTypes}
+${selectedTypes.length > 0
+  ? `Тип(и) вже обрано ПМом: ${selectedTypes.join(", ")}. Використовуй саме ці типи — не змінюй. Якщо обрано декілька, поверни перший як project_type.`
+  : `Визнач один варіант: ${sowTypes}`}
 
 ЗАВДАННЯ 2 — project_annotation:
 Стислий опис (3-5 речень): тип простору, площа/кількість приміщень, стиль, ключові матеріали, що надано.
@@ -2589,7 +2618,7 @@ ${briefText.trim() || "(дивись прикріплені матеріали)"
 - img_ref: { "file": "мітка файлу", "page": N } або null  (напр. {"file":"СТИЛЬ / МУДБОРД 1","page":2}; page=1 якщо перша сторінка)
 - source: назва категорії вхідного файлу
 - links: масив всіх URL пов'язаних з цією вимогою — [ { url, label, type } ] де type: "furniture"|"material"|"reference"|"color"|"catalog"|"product"|"map"|"other". Якщо посилань немає — []
-- Категорії: "Матеріали та текстури", "Меблі та моделі", "Сезон / атмосфера", "Тип освітлення", "Креслення та планування", "Логотип / написи", "Вимоги клієнта", "Специфічні запити"
+- Категорії: "Референси", "Матеріали та оздоблення", "Меблі та предмети", "Креслення", "Технічні вимоги", "Вимоги клієнта"
 
 ЗАВДАННЯ 5 — conflicts:
 Суперечності між вхідними файлами. Кожен рядок: "Конфлікт: [що суперечить чому]. Джерело A: [файл/цитата]. Джерело B: [файл/цитата]. Питання: [що треба уточнити]"
@@ -2614,12 +2643,12 @@ ${sowTemplatesText}
 - sow_unclear: пункти шаблону які є але неповні або незрозумілі. Формат: "Назва пункту — знайдено: [що є]. Неясно: [конкретне питання]"
 
 ЗАВДАННЯ 8 — delivery_spec:
-Сформуй список технічних параметрів фінального результату (output spec). Тільки параметри що описують що буде здано клієнту — роздільність, DPI, формат, час доби, сезон, кількість зображень, кути камер, співвідношення сторін тощо. Не включай процесні параметри (наявність DWG, меблів, посилань).
-Для кожного параметру з SOW-шаблону (дивись шаблон для визначеного project_type):
-- Якщо вказано в матеріалах клієнта → source: "brief", value: значення з матеріалів
-- Якщо не вказано але є дефолт у шаблоні → source: "default", value: дефолт зі шаблону
-- Якщо не вказано і дефолту немає → source: "unclear", value: "—"
+Зістав вхідні матеріали з УСІМА пунктами SOW-шаблону для визначеного типу проекту. Для КОЖНОГО пункту шаблону (крім рядків що починаються з "---") створи запис:
+- Якщо клієнт надав цей параметр → source: "brief", value: коротке значення з матеріалів (1-2 слова або фраза)
+- Якщо не надав але є дефолт у шаблоні → source: "default", value: дефолт зі шаблону
+- Якщо не надав і дефолту немає → source: "unclear", value: "—"
 Структура: [{"key": "Роздільність", "value": "4K", "source": "brief"}]
+Покрий ВСІ пункти шаблону — від креслень до дедлайну.
 
 ЗАВДАННЯ 9 — sources:
 Посторінковий журнал джерел — що знайдено в кожному файлі/сторінці.
@@ -2806,6 +2835,24 @@ ${sowTemplatesText}
             </div>
           );
         })()}
+
+        {/* Project type selector */}
+        <div style={{ marginBottom: 12 }}>
+          <div style={{ fontSize: 9, fontFamily: "monospace", color: "#aaa", letterSpacing: "0.1em", marginBottom: 6 }}>
+            ТИП ПРОЕКТУ {selectedTypes.length === 0 && <span style={{ color: "#ccc" }}>— AI визначить автоматично</span>}
+          </div>
+          <div style={{ display: "flex", flexWrap: "wrap", gap: 5 }}>
+            {Object.keys(SOW_TEMPLATES).map(t => {
+              const active = selectedTypes.includes(t);
+              return (
+                <button key={t} onClick={() => setSelectedTypes(prev => active ? prev.filter(x => x !== t) : [...prev, t])}
+                  style={{ fontSize: 10, fontFamily: "monospace", padding: "4px 10px", borderRadius: 20, border: `1px solid ${active ? "#1a1a1a" : "#ddd"}`, background: active ? "#1a1a1a" : "#fff", color: active ? "#fff" : "#666", cursor: "pointer", transition: "all 0.1s" }}>
+                  {t}
+                </button>
+              );
+            })}
+          </div>
+        </div>
 
         {/* CTA */}
         <button

@@ -3214,13 +3214,27 @@ RESPOND ONLY WITH JSON:
       setTzClientComments(result.client_comments || []);
       setTzSowMissing(result.sow_missing || []);
       setTzSowUnclear(result.sow_unclear || []);
-      setTzDeliverySpec(result.delivery_spec || []);
+      // Build delivery_spec strictly from template — 1:1 with SOW_TEMPLATES items, no more no less
+      const detectedType = result.project_type || "";
+      const specTemplate = SOW_TEMPLATES[detectedType];
+      const claudeSpec = result.delivery_spec || [];
+      const normalizedSpec = specTemplate
+        ? specTemplate.items
+            .filter(i => typeof i === "object" && i.text && !i.text.startsWith("---"))
+            .map(i => {
+              const fromClaude = claudeSpec.find(s => s.key === i.text);
+              if (fromClaude && fromClaude.source === "brief") return fromClaude;
+              if (specTemplate.defaults[i.text]) return { key: i.text, value: specTemplate.defaults[i.text], source: "default" };
+              return { key: i.text, value: "—", source: "unclear" };
+            })
+        : claudeSpec;
+      setTzDeliverySpec(normalizedSpec);
       setTzConflicts(result.conflicts || []);
       setTzRoadmap(result.roadmap || []);
       setTzSources(result.sources || []);
       setTzSourceTags({});
       setTzClientTranslation(null);
-      saveSession({ savedAt: new Date().toISOString(), projectType: result.project_type || "", rooms, tzByRoom: stripImgRefs(byRoom), tzAnnotation: result.project_annotation || "", clientComments: result.client_comments || [], sowMissing: result.sow_missing || [], sowUnclear: result.sow_unclear || [], deliverySpec: result.delivery_spec || [], sowCoverage: [], conflicts: result.conflicts || [], roadmap: result.roadmap || [], sources: result.sources || [] });
+      saveSession({ savedAt: new Date().toISOString(), projectType: result.project_type || "", rooms, tzByRoom: stripImgRefs(byRoom), tzAnnotation: result.project_annotation || "", clientComments: result.client_comments || [], sowMissing: result.sow_missing || [], sowUnclear: result.sow_unclear || [], deliverySpec: normalizedSpec, sowCoverage: [], conflicts: result.conflicts || [], roadmap: result.roadmap || [], sources: result.sources || [] });
       setStage("review");
       buildSowCoverage(result.project_type || "", byRoom, apiKey);
     } catch (e) {

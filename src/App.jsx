@@ -2965,7 +2965,9 @@ Return ONLY valid JSON in exactly the same structure with translated values:
     readyFiles(allFilesList).forEach((f) => {
       const cat = f._category || "File";
       catCounters[cat] = (catCounters[cat] || 0) + 1;
-      const fileLabel = `${cat} ${catCounters[cat]}`;
+      const fileLabel = cat === "Unclassified"
+        ? f.filename.replace(/\.[^.]+$/, "")
+        : `${cat} ${catCounters[cat]}`;
       (f.pages || []).filter(p => p._selected !== false).forEach((pg, pi) => {
         if (pg.preview || pg.b64) {
           const entry = { preview: pg.preview, full: pg.b64 ? `data:image/jpeg;base64,${pg.b64}` : pg.preview, filename: f.filename, pageNum: pi + 1, fileLabel, category: cat };
@@ -3035,7 +3037,10 @@ Return ONLY valid JSON in exactly the same structure with translated values:
     const labeledFiles = allFiles.map(f => {
       const cat = f._category || "File";
       catCounters[cat] = (catCounters[cat] || 0) + 1;
-      return { ...f, _label: `${cat.toUpperCase()} ${catCounters[cat]}` };
+      const label = cat === "Unclassified"
+        ? f.filename.replace(/\.[^.]+$/, "")
+        : `${cat.toUpperCase()} ${catCounters[cat]}`;
+      return { ...f, _label: label };
     });
 
     // Pre-process large PDFs: chunk into Haiku batches, extract text per page

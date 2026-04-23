@@ -3138,8 +3138,8 @@ Array of rooms/zones. General requirements (style, lighting, cameras, deadline) 
 TASK 4 — tz_by_room:
 Two-pass extraction:
 
-Pass 1 — Brief → Template: read ALL files, extract EVERY requirement found. Classify each into the template categories below. Anything that doesn't fit other categories → "Client Requirements".
-Pass 2 — Template → Brief: go through the template item list again. Any item not found in Pass 1 → do NOT add to tz_by_room (it will appear in sow_missing via TASK 6).
+Pass 1 — Template → Brief: go through each template item listed below. Search for it in the provided files. If found — add to tz_by_room. If not found — skip (it will appear in sow_missing via TASK 6).
+Pass 2 — Brief → Template: scan ALL files again for any client requirements NOT already captured in Pass 1. Classify extras into the appropriate template category. Anything that doesn't fit → "Client Requirements".
 
 SOW template items for this project type:
 ${taskFourItemsList}

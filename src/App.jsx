@@ -2403,7 +2403,7 @@ function TzReviewStep({ projectType, rooms, tzByRoom, sowMissing, sowUnclear, de
 
       {/* ── SOWa / NIQ tabs ── */}
       <div style={{ background: "#fff", borderBottom: "1px solid #e8e6e1", display: "flex", padding: "0 20px", flexShrink: 0 }}>
-        {[["sowa", `SOWa · ${totalItems}`], ["niq", `NIQ · ${(sowMissing?.length || 0) + (sowUnclear?.length || 0) + (conflicts?.length || 0)}`], ["spec", `SPEC · ${deliverySpec?.length || 0}`]].map(([id, label]) => (
+        {[["sowa", `SOWa · ${totalItems}`], ["niq", `NIQ · ${(sowMissing?.length || 0) + (sowUnclear?.length || 0) + (conflicts?.length || 0)}`], ["spec", `SOWA VS BT · ${deliverySpec?.length || 0}`]].map(([id, label]) => (
           <button key={id} onClick={() => setSowPage(id)} style={{ fontSize: 10, fontFamily: "monospace", fontWeight: 700, letterSpacing: "0.08em", padding: "10px 18px", border: "none", borderBottom: sowPage === id ? "2px solid #1a1a1a" : "2px solid transparent", background: "transparent", cursor: "pointer", color: sowPage === id ? "#1a1a1a" : "#aaa" }}>{label.toUpperCase()}</button>
         ))}
       </div>
@@ -2452,12 +2452,19 @@ function TzReviewStep({ projectType, rooms, tzByRoom, sowMissing, sowUnclear, de
                 <div style={{ marginBottom: 24 }}>
                   <div style={{ fontSize: 9, fontWeight: 700, fontFamily: "monospace", color: "#e74c3c", letterSpacing: "0.12em", marginBottom: 8 }}>MISSING ({sowMissing.length})</div>
                   <div style={{ background: "#fff", borderRadius: 6, border: "1px solid #fde8e8", padding: "2px 14px" }}>
-                    {sowMissing.map((m, i) => (
-                      <div key={i} style={{ padding: "9px 0", borderBottom: i < sowMissing.length - 1 ? "1px solid #fde8e8" : "none", display: "flex", gap: 10 }}>
-                        <span style={{ color: "#e74c3c", fontFamily: "monospace", fontSize: 12, flexShrink: 0, marginTop: 1 }}>?</span>
-                        <span style={{ fontSize: 11, color: "#333", lineHeight: 1.55 }}>{m}</span>
-                      </div>
-                    ))}
+                    {sowMissing.map((m, i) => {
+                      const dashIdx = m.indexOf(" — ");
+                      const label = dashIdx > -1 ? m.slice(0, dashIdx) : null;
+                      const rest  = dashIdx > -1 ? m.slice(dashIdx + 3) : m;
+                      return (
+                        <div key={i} style={{ padding: "9px 0", borderBottom: i < sowMissing.length - 1 ? "1px solid #fde8e8" : "none", display: "flex", gap: 10 }}>
+                          <span style={{ color: "#e74c3c", fontFamily: "monospace", fontSize: 12, flexShrink: 0, marginTop: 1 }}>?</span>
+                          <span style={{ fontSize: 11, color: "#333", lineHeight: 1.55 }}>
+                            {label && <strong>{label}</strong>}{label ? " — " : ""}{rest}
+                          </span>
+                        </div>
+                      );
+                    })}
                   </div>
                 </div>
               )}
@@ -2465,12 +2472,19 @@ function TzReviewStep({ projectType, rooms, tzByRoom, sowMissing, sowUnclear, de
                 <div style={{ marginBottom: 24 }}>
                   <div style={{ fontSize: 9, fontWeight: 700, fontFamily: "monospace", color: "#e67e22", letterSpacing: "0.12em", marginBottom: 8 }}>UNCLEAR ({sowUnclear.length})</div>
                   <div style={{ background: "#fff", borderRadius: 6, border: "1px solid #fff3e0", padding: "2px 14px" }}>
-                    {sowUnclear.map((u, i) => (
-                      <div key={i} style={{ padding: "9px 0", borderBottom: i < sowUnclear.length - 1 ? "1px solid #fff3e0" : "none", display: "flex", gap: 10 }}>
-                        <span style={{ color: "#e67e22", fontFamily: "monospace", fontSize: 12, flexShrink: 0, marginTop: 1 }}>⚠</span>
-                        <span style={{ fontSize: 11, color: "#333", lineHeight: 1.55 }}>{u}</span>
-                      </div>
-                    ))}
+                    {sowUnclear.map((u, i) => {
+                      const dashIdx = u.indexOf(" — ");
+                      const label = dashIdx > -1 ? u.slice(0, dashIdx) : null;
+                      const rest  = dashIdx > -1 ? u.slice(dashIdx + 3) : u;
+                      return (
+                        <div key={i} style={{ padding: "9px 0", borderBottom: i < sowUnclear.length - 1 ? "1px solid #fff3e0" : "none", display: "flex", gap: 10 }}>
+                          <span style={{ color: "#e67e22", fontFamily: "monospace", fontSize: 12, flexShrink: 0, marginTop: 1 }}>⚠</span>
+                          <span style={{ fontSize: 11, color: "#333", lineHeight: 1.55 }}>
+                            {label && <strong>{label}</strong>}{label ? " — " : ""}{rest}
+                          </span>
+                        </div>
+                      );
+                    })}
                   </div>
                 </div>
               )}
@@ -2480,10 +2494,15 @@ function TzReviewStep({ projectType, rooms, tzByRoom, sowMissing, sowUnclear, de
                   <div style={{ background: "#fff", borderRadius: 6, border: "1px solid #fde8e8", padding: "2px 14px" }}>
                     {conflicts.map((c, i) => {
                       const text = typeof c === "string" ? c : (c.description || c.text || "");
+                      const dashIdx = text.indexOf(" — ");
+                      const label = dashIdx > -1 ? text.slice(0, dashIdx) : null;
+                      const rest  = dashIdx > -1 ? text.slice(dashIdx + 3) : text;
                       return (
                         <div key={i} style={{ padding: "9px 0", borderBottom: i < conflicts.length - 1 ? "1px solid #fde8e8" : "none", display: "flex", gap: 10 }}>
                           <span style={{ color: "#e74c3c", fontFamily: "monospace", fontSize: 12, flexShrink: 0, marginTop: 1 }}>⚡</span>
-                          <span style={{ fontSize: 11, color: "#333", lineHeight: 1.55 }}>{text}</span>
+                          <span style={{ fontSize: 11, color: "#333", lineHeight: 1.55 }}>
+                            {label && <strong>{label}</strong>}{label ? " — " : ""}{rest}
+                          </span>
                         </div>
                       );
                     })}

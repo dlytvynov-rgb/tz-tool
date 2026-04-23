@@ -3136,11 +3136,16 @@ TASK 3 — rooms:
 Array of rooms/zones. General requirements (style, lighting, cameras, deadline) — put in "General". If rooms are not defined — only ["General"].
 
 TASK 4 — tz_by_room:
-Search the provided files for EACH of the following SOW template items. Go through them one by one:
+Two-pass extraction:
+
+Pass 1 — Brief → Template: read ALL files, extract EVERY requirement found. Classify each into the template categories below. Anything that doesn't fit other categories → "Client Requirements".
+Pass 2 — Template → Brief: go through the template item list again. Any item not found in Pass 1 → do NOT add to tz_by_room (it will appear in sow_missing via TASK 6).
+
+SOW template items for this project type:
 ${taskFourItemsList}
 
-For each item found in the materials:
-- Place it in tz_by_room under the correct room ("General" if not room-specific) and the EXACT category shown in brackets above — do not rename or merge categories
+Rules for each extracted item:
+- Place it under the correct room ("General" if not room-specific) and the EXACT category from the template — do not rename or merge categories
 - text = FULL description: name + material + color + finish + size + brand/model
 - ATOMICITY: one item = one requirement. If a sentence contains multiple objects ("sofa + armchair + table") — split into separate items
 - quote = verbatim quote from input materials, or null
@@ -3148,7 +3153,11 @@ For each item found in the materials:
 - img_ref: { "file": "file label", "page": N } or null
 - source: input file category label
 - links: [ { url, label, type } ] where type: "furniture"|"material"|"reference"|"color"|"catalog"|"product"|"map"|"other". If no links — []
-- If an item is NOT found in any file — skip it entirely (do not invent values; it will be listed in sow_missing)
+- MATERIAL SPECIFICITY: always write the exact brand/model/article number. "LVT Katanga Oxford" not "vinyl". "Minotti Lawrence" not "sofa". If catalog/article number is visible — include it. Never generalize.
+- REFERENCES: for EACH reference image, extract the SPECIFIC ASPECT to adopt. Not just "style reference" — write what exactly to take: "Reference — warm golden-hour lighting, soft shadows" or "Reference — composition: sofa facing window, low camera angle" or "Reference — matte concrete wall finish". State color palette / lighting type / mood / proportions / material finish — whichever is visible and relevant.
+- FLOOR PLAN CAMERAS: if a DWG/floor plan is present, numbered camera markers (triangles, arrows, numbered circles) = camera positions. Extract EACH as a separate item in the "Client Requirements" category: "Camera [N] — position: [location, e.g. 'facing North from living room entrance']". Use img_ref pointing to the drawing page.
+- WINDOW & DOOR SCHEDULES: if a window schedule or door schedule is found in drawings → place in the "Drawings" category with img_ref pointing to that drawing page.
+- ELEVATIONS: wall elevations, cabinet/kitchen elevations, section drawings → place in the "Drawings" category with img_ref pointing to the drawing page.
 Structure: { "Room": { "Category": [ {id, text, quote, stage, source, img_ref, links} ] } }
 
 TASK 5 — conflicts:
@@ -3165,7 +3174,7 @@ ${sowTemplatesText}
 - sow_missing: template items that are COMPLETELY absent from input materials.
   - If the item has a default in the template → format: "Item name — not specified. Will use: [default]. Confirm or send replacement"
   - If no default → format: "Item name — what the client needs to provide"
-- sow_unclear: template items that are present but incomplete or unclear. Format: "Item name — found: [what exists]. Unclear: [specific question]"
+- sow_unclear: template items that are present but incomplete or unclear. Format: "Item name — found: [what exists]. Ask client: '[question phrased directly to the client, as if writing to them]'"
 
 TASK 7 — delivery_spec:
 For each SOW template item where you found a concrete value in the client materials, report:

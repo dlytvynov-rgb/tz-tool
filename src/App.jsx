@@ -3067,6 +3067,15 @@ Return ONLY valid JSON in exactly the same structure with translated values:
         return text;
       })
       .join("\n\n");
+    const taskFourItemsList = activeTemplateEntries
+      .map(([type, { items }]) => {
+        const itemLines = items
+          .filter(i => typeof i === "object" && i.text)
+          .map(i => `  [${i.cat}] ${i.text}`)
+          .join("\n");
+        return `${type}:\n${itemLines}`;
+      })
+      .join("\n\n");
     const parts = [{ type: "text", text: `You are an experienced 3D artist and PM analyzing incoming brief materials BEFORE project start. Your goal is not just to extract requirements, but to prepare a complete roadmap and delivery checklist so the team (visualizer + AD + PM) can verify the result against what the client requested.
 
 LANGUAGE: input materials may be in any language — Ukrainian, Russian, English, mixed. Recognize requirements regardless of language. Always respond ONLY in English.
@@ -3103,24 +3112,20 @@ TASK 3 — rooms:
 Array of rooms/zones. General requirements (style, lighting, cameras, deadline) — put in "General". If rooms are not defined — only ["General"].
 
 TASK 4 — tz_by_room:
-CRITICAL: find ALL requirements, break down by room and category.
-Structure: { "Room": { "Category": [ {id, text, quote, stage, source, img_ref, links} ] } }
+Search the provided files for EACH of the following SOW template items. Go through them one by one:
+${taskFourItemsList}
+
+For each item found in the materials:
+- Place it in tz_by_room under the correct room ("General" if not room-specific) and the EXACT category shown in brackets above — do not rename or merge categories
 - text = FULL description: name + material + color + finish + size + brand/model
 - ATOMICITY: one item = one requirement. If a sentence contains multiple objects ("sofa + armchair + table") — split into separate items
 - quote = verbatim quote from input materials, or null
 - stage = "Modeling" | "Texturing" | "Lighting" | "Cameras" | "Post-production" | "Delivery"
-- img_ref: { "file": "file label", "page": N } or null  (e.g. {"file":"STYLE / MOODBOARD 1","page":2}; page=1 if first page)
+- img_ref: { "file": "file label", "page": N } or null
 - source: input file category label
-- links: array of all URLs related to this requirement — [ { url, label, type } ] where type: "furniture"|"material"|"reference"|"color"|"catalog"|"product"|"map"|"other". If no links — []
-- Categories depend on project type:
-  - Silo: "Product", "Angles & Delivery", "Technical Requirements"
-  - Lifestyle: "Product", "Materials & Textures", "Scene", "Technical Requirements"
-  - Floor Rendering: "Surface Specification", "Scene", "Technical Requirements"
-  - Mattress Rendering: "Product", "Materials & Textures", "Silo", "Lifestyle", "Technical Requirements"
-  - Rugs Rendering: "Angles & Delivery", "Technical Requirements"
-  - 3D Modeling: "Modeling Parameters", "AR Specification", "Product Reference", "Materials & Textures"
-  - All other types: "References", "Materials & Finishes", "Furniture & Objects", "Drawings", "Technical Requirements", "Client Requirements"
-- IMPORTANT: in the SOW template each item has a [cat] tag. Use exactly that category for the corresponding item. If the requirement is not part of the template — choose the closest allowed category for this project type.
+- links: [ { url, label, type } ] where type: "furniture"|"material"|"reference"|"color"|"catalog"|"product"|"map"|"other". If no links — []
+- If an item is NOT found in any file — skip it entirely (do not invent values; it will be listed in sow_missing)
+Structure: { "Room": { "Category": [ {id, text, quote, stage, source, img_ref, links} ] } }
 
 TASK 5 — conflicts:
 Contradictions between input files. Each entry: "Conflict: [what contradicts what]. Source A: [file/quote]. Source B: [file/quote]. Question: [what needs clarification]"
@@ -3145,13 +3150,10 @@ ${sowTemplatesText}
 - sow_unclear: template items that are present but incomplete or unclear. Format: "Item name — found: [what exists]. Unclear: [specific question]"
 
 TASK 8 — delivery_spec:
-Match input materials against ALL items in the SOW template for the determined project type. For EACH template item (except lines starting with "---") create a record:
-- If client provided this parameter → source: "brief", value: short value from materials (1-2 words or phrase)
-- If not provided but template has a default → source: "default", value: default from template
-- If not provided and no default → source: "unclear", value: "—"
-IMPORTANT: key = only the template item text, WITHOUT the [category] prefix. For example: "Resolution", NOT "[Technical Requirements] Resolution". The key text must exactly match the template item text — do not shorten or rephrase.
-Structure: [{"key": "Resolution", "value": "4K", "source": "brief"}]
-Cover ALL template items — from drawings to deadline.
+For each SOW template item where you found a concrete value in the client materials, report:
+{ "key": "exact item text", "value": "short value (1-2 words or phrase)", "source": "brief" }
+IMPORTANT: key must exactly match the template item text — do not shorten or rephrase, no [category] prefix.
+Only include items with source "brief" — skip everything else. Defaults and unclear states are handled automatically.
 
 TASK 9 — sources:
 Page-by-page source log — what was found in each file/page.

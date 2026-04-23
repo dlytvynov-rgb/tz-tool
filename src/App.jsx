@@ -3415,7 +3415,7 @@ RESPOND ONLY WITH JSON:
         {tzRooms.length > 0 && (
           <div style={{ marginTop: 16, padding: "10px 14px", background: "#f0f7ff", border: "1px solid #b3d4f5", borderRadius: 8, display: "flex", alignItems: "center", gap: 10 }}>
             <span style={{ fontSize: 10, color: "#2980b9", fontFamily: "monospace", flex: 1 }}>
-              {tzProjectType || "Session"} · {tzRooms.length} room{tzRooms.length === 1 ? "" : "s"}
+              {tzProjectType || "Session"}{tzRooms.length > 1 || (tzRooms.length === 1 && tzRooms[0] !== "General") ? ` · ${tzRooms.length} room${tzRooms.length === 1 ? "" : "s"}` : ""}
             </span>
             <button
               onClick={() => setStage("review")}

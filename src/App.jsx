@@ -2505,7 +2505,7 @@ function TzReviewStep({ projectType, rooms, tzByRoom, sowMissing, sowUnclear, de
                     {item.source === "brief" ? "✓" : item.source === "unclear" ? "⚠" : "·"}
                   </span>
                   <span style={{ fontSize: 11, color: "#555", fontFamily: "monospace", width: 220, flexShrink: 0, paddingLeft: 6 }}>{item.key}</span>
-                  <span style={{ fontSize: 12, color: item.source === "unclear" ? "#bbb" : "#1a1a1a", flex: 1 }}>{item.value || "—"}</span>
+                  <span style={{ fontSize: 12, color: item.source === "unclear" ? "#bbb" : "#1a1a1a", flex: 1, textAlign: "center" }}>{item.value || "—"}</span>
                   <span style={{ fontSize: 9, fontFamily: "monospace", whiteSpace: "nowrap", color: item.source === "brief" ? "#27ae60" : item.source === "unclear" ? "#e67e22" : "#bbb" }}>
                     {item.source === "brief" ? "from brief" : item.source === "default" ? "default" : "to clarify"}
                   </span>

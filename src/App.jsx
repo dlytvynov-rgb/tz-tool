@@ -3131,15 +3131,9 @@ TASK 5 — conflicts:
 Contradictions between input files. Each entry: "Conflict: [what contradicts what]. Source A: [file/quote]. Source B: [file/quote]. Question: [what needs clarification]"
 Example: "Conflict: living room wall color. Source A: brief — 'walls dark grey'. Source B: moodboard p.2 — reference with light walls. Question: which version is priority?"
 
-TASK 6 — roadmap:
-Ordered work plan by production stages. For each stage — specific tasks in execution order accounting for dependencies.
-Structure: [ { stage, order, notes, tasks: ["task 1", "task 2"] } ]
-- stage = one of: "Modeling" | "Texturing" | "Lighting" | "Cameras" | "Post-production" | "Delivery"
-- order = sequence number (1, 2, 3...)
-- notes = important comment for this stage (dependencies, risks, what to clarify before starting)
-- tasks = specific actions to perform
+// TASK 6 (roadmap) — disabled, UI hidden. Re-enable when roadmap view is restored.
 
-TASK 7 — sow_missing and sow_unclear:
+TASK 6 — sow_missing and sow_unclear:
 Cross-check input materials against the full SOW template for the determined project type (project_type from Task 1).
 Templates by type:
 ${sowTemplatesText}
@@ -3149,13 +3143,13 @@ ${sowTemplatesText}
   - If no default → format: "Item name — what the client needs to provide"
 - sow_unclear: template items that are present but incomplete or unclear. Format: "Item name — found: [what exists]. Unclear: [specific question]"
 
-TASK 8 — delivery_spec:
+TASK 7 — delivery_spec:
 For each SOW template item where you found a concrete value in the client materials, report:
 { "key": "exact item text", "value": "short value (1-2 words or phrase)", "source": "brief" }
 IMPORTANT: key must exactly match the template item text — do not shorten or rephrase, no [category] prefix.
 Only include items with source "brief" — skip everything else. Defaults and unclear states are handled automatically.
 
-TASK 9 — sources:
+TASK 8 — sources:
 Page-by-page source log — what was found in each file/page.
 Structure: [ { file: "file label", page: N, found: [ { id, type, description } ] } ]
 - file: file label (e.g. "MOODBOARD 1", "DRAWINGS", "BRIEF TEXT")
@@ -3165,12 +3159,10 @@ Structure: [ { file: "file label", page: N, found: [ { id, type, description } ]
 - description: brief description of what exactly (product name, brand, description)
 Include EVERYTHING on the page — furniture, materials, style references, time of day, weather, render quality, angles, dimensions.
 
-TASK 10 — client_comments:
-ALL client comments — in frames, notes, arrows.
-{ page: "file label", text: "verbatim" }
+// TASK 10 (client_comments) — disabled, UI hidden. Re-enable when comments view is restored.
 
 RESPOND ONLY WITH JSON:
-{"project_type":"...","project_annotation":"...","rooms":["General","Living Room"],"tz_by_room":{"General":{"Lighting":[{"id":"tz1","text":"Warm lighting 2700K, floor lamp near sofa","quote":"warm lighting, floor lamp near sofa","stage":"Lighting","source":"BRIEF TEXT","img_ref":null,"links":[]}]},"Living Room":{"Furniture & Objects":[{"id":"tz2","text":"Sofa — Minotti Lawrence, grey velvet","quote":"sofa Minotti Lawrence grey","stage":"Modeling","source":"MATERIALS 1","img_ref":{"file":"MATERIALS 1","page":2},"links":[{"url":"https://minotti.com/...","label":"Minotti Lawrence","type":"furniture"}]}]}},"conflicts":["Conflict: living room wall color. Source A: brief — 'dark grey walls'. Source B: moodboard p.2 — light interior. Question: which version is priority?"],"roadmap":[{"stage":"Modeling","order":1,"notes":"Clarify floor plan with client before start — discrepancy between drawing and brief","tasks":["Model layout from DWG","Base furniture from references"]}],"sources":[{"file":"MOODBOARD 1","page":2,"found":[{"id":"src1","type":"furniture","description":"Sofa Minotti Lawrence, grey velvet"},{"id":"src2","type":"style_ref","description":"Scandinavian style, natural materials"},{"id":"src3","type":"lighting","description":"Flos IC F floor lamp"}]},{"file":"DRAWINGS","page":1,"found":[{"id":"src4","type":"dimensions","description":"Living room 6×4m, bedroom 4×3.5m"},{"id":"src5","type":"camera","description":"Angle from living room corner to seating area"}]}],"sow_missing":["Time of day — not specified. Will use: day. Confirm or send replacement","Furniture — links or brand required for each item"],"sow_unclear":["Wall color — found: 'replace green'. Unclear: what color — need RAL/HEX"],"delivery_spec":[{"key":"Resolution","value":"4K","source":"brief"},{"key":"DPI","value":"72","source":"default"},{"key":"File Format","value":"JPEG","source":"default"},{"key":"Time of day","value":"evening","source":"brief"},{"key":"Number of images","value":"—","source":"unclear"}],"client_comments":[{"page":"BRIEF TEXT 1","text":"..."}]}` }];
+{"project_type":"...","project_annotation":"...","rooms":["General","Living Room"],"tz_by_room":{"General":{"References":[{"id":"tz1","text":"Scandinavian style, natural materials, muted tones","quote":"scandinavian style, natural materials","stage":"Texturing","source":"MOODBOARD 1","img_ref":{"file":"MOODBOARD 1","page":1},"links":[]}]},"Living Room":{"Furniture & Objects":[{"id":"tz2","text":"Sofa — Minotti Lawrence, grey velvet","quote":"sofa Minotti Lawrence grey","stage":"Modeling","source":"MATERIALS 1","img_ref":{"file":"MATERIALS 1","page":2},"links":[{"url":"https://minotti.com/...","label":"Minotti Lawrence","type":"furniture"}]}]}},"conflicts":["Conflict: living room wall color. Source A: brief — 'dark grey walls'. Source B: moodboard p.2 — light interior. Question: which version is priority?"],"sources":[{"file":"MOODBOARD 1","page":2,"found":[{"id":"src1","type":"furniture","description":"Sofa Minotti Lawrence, grey velvet"},{"id":"src2","type":"style_ref","description":"Scandinavian style, natural materials"}]},{"file":"DRAWINGS","page":1,"found":[{"id":"src3","type":"dimensions","description":"Living room 6×4m, bedroom 4×3.5m"}]}],"sow_missing":["Time of day — not specified. Will use: day. Confirm or send replacement","Furniture — links or brand required for each item"],"sow_unclear":["Wall color — found: 'replace green'. Unclear: what color — need RAL/HEX"],"delivery_spec":[{"key":"Resolution","value":"4K","source":"brief"},{"key":"Time of day","value":"evening","source":"brief"}]}` }];
 
     parts.push(...filesToParts(processedFiles, "FILE"));
 

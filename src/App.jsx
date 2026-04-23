@@ -250,16 +250,16 @@ async function parseDWG(file) {
     const layerList = [...layers].filter(l => l && l !== "0").slice(0, 40);
 
     let textContent = `=== DWG: ${file.name} ===\n`;
-    if (layerList.length) textContent += `ШАРИ: ${layerList.join(", ")}\n`;
-    if (Object.keys(entityCounts).length) textContent += `ЕЛЕМЕНТИ: ${Object.entries(entityCounts).map(([k, v]) => `${k}×${v}`).join(", ")}\n`;
-    if (uniqueTexts.length) textContent += `ПІДПИСИ:\n${uniqueTexts.map(t => "  • " + t).join("\n")}\n`;
+    if (layerList.length) textContent += `LAYERS: ${layerList.join(", ")}\n`;
+    if (Object.keys(entityCounts).length) textContent += `ENTITIES: ${Object.entries(entityCounts).map(([k, v]) => `${k}×${v}`).join(", ")}\n`;
+    if (uniqueTexts.length) textContent += `LABELS:\n${uniqueTexts.map(t => "  • " + t).join("\n")}\n`;
 
     const preview = renderDwgToCanvas(entities);
     const pages = preview ? [{ b64: preview.split(",")[1], preview }] : [];
     return { pages, type: "dwg", filename: file.name, ext: "DWG", textContent };
   } catch (e) {
     console.warn(`[DWG] ${file.name}:`, e);
-    return { pages: [], type: "dwg", filename: file.name, ext: "DWG", textContent: `[помилка читання DWG: ${e.message}]` };
+    return { pages: [], type: "dwg", filename: file.name, ext: "DWG", textContent: `[DWG read error: ${e.message}]` };
   }
 }
 
@@ -283,12 +283,12 @@ function parseDXF(text) {
   const uniqueTexts = [...new Set(sections.texts)].filter(t => t.trim().length > 0).slice(0, 120);
   const uniqueDims = [...new Set(sections.dimensions)].slice(0, 60);
   const layers = [...sections.layers].filter(l => l && l !== "0").slice(0, 40);
-  let out = "=== DXF КРЕСЛЕННЯ ===\n";
-  if (layers.length) out += "ШАРИ (" + layers.length + "): " + layers.join(", ") + "\n";
-  if (Object.keys(entityCounts).length) out += "ЕЛЕМЕНТИ: " + Object.entries(entityCounts).map(e => e[0] + "x" + e[1]).join(", ") + "\n";
-  if (uniqueDims.length) out += "РОЗМІРИ (мм): " + uniqueDims.join(", ") + "\n";
-  if (uniqueTexts.length) out += "ПІДПИСИ:\n" + uniqueTexts.map(t => "  • " + t).join("\n") + "\n";
-  return out || "[DXF порожній]";
+  let out = "=== DXF DRAWING ===\n";
+  if (layers.length) out += "LAYERS (" + layers.length + "): " + layers.join(", ") + "\n";
+  if (Object.keys(entityCounts).length) out += "ENTITIES: " + Object.entries(entityCounts).map(e => e[0] + "x" + e[1]).join(", ") + "\n";
+  if (uniqueDims.length) out += "DIMENSIONS (mm): " + uniqueDims.join(", ") + "\n";
+  if (uniqueTexts.length) out += "LABELS:\n" + uniqueTexts.map(t => "  • " + t).join("\n") + "\n";
+  return out || "[DXF empty]";
 }
 
 // ─── JSZip loader ─────────────────────────────────────────────────────────────
@@ -312,7 +312,7 @@ async function processFile(file, onProg, sig) {
   if (nm.endsWith(".dxf")) {
     onProg?.(30);
     try { const text = await file.text(); onProg?.(80); const parsed = parseDXF(text); onProg?.(100); return { pages: [], type: "dxf", filename: file.name, ext: "DXF", textContent: parsed }; }
-    catch { onProg?.(100); return { pages: [], type: "dxf", filename: file.name, ext: "DXF", textContent: "[помилка читання DXF]" }; }
+    catch { onProg?.(100); return { pages: [], type: "dxf", filename: file.name, ext: "DXF", textContent: "[DXF read error]" }; }
   }
   if (nm.endsWith(".dwg")) {
     onProg?.(10);
@@ -323,20 +323,20 @@ async function processFile(file, onProg, sig) {
   if (nm.endsWith(".xlsx") || nm.endsWith(".xls") || nm.endsWith(".csv")) {
     onProg?.(30);
     try { const text = nm.endsWith(".csv") ? await file.text() : await excelToText(file); onProg?.(100); return { pages: [], type: "excel", filename: file.name, ext: nm.endsWith(".csv") ? "CSV" : "XLSX", textContent: text.slice(0, 12000) }; }
-    catch { onProg?.(100); return { pages: [], type: "excel", filename: file.name, ext: "XLSX", textContent: "[помилка читання]" }; }
+    catch { onProg?.(100); return { pages: [], type: "excel", filename: file.name, ext: "XLSX", textContent: "[read error]" }; }
   }
   if (nm.endsWith(".rtf")) {
     onProg?.(30);
     try {
       const raw = await file.text();
       const text = raw.replace(/\{\*\\[^{}]*\}/g, "").replace(/\\bin\d+ ?/g, "").replace(/\\'[0-9a-fA-F]{2}/g, "").replace(/\\[a-z]+[-]?\d* ?/g, "").replace(/[{}\\]/g, "").replace(/\r?\n{3,}/g, "\n\n").trim();
-      onProg?.(100); return { pages: [], type: "text", filename: file.name, ext: "RTF", textContent: (text || "[RTF порожній]").slice(0, 12000) };
-    } catch { onProg?.(100); return { pages: [], type: "text", filename: file.name, ext: "RTF", textContent: "[помилка читання RTF]" }; }
+      onProg?.(100); return { pages: [], type: "text", filename: file.name, ext: "RTF", textContent: (text || "[RTF empty]").slice(0, 12000) };
+    } catch { onProg?.(100); return { pages: [], type: "text", filename: file.name, ext: "RTF", textContent: "[RTF read error]" }; }
   }
   if (nm.endsWith(".txt") || nm.endsWith(".md")) {
     onProg?.(30);
     try { const text = await file.text(); onProg?.(100); return { pages: [], type: "text", filename: file.name, ext: nm.split(".").pop().toUpperCase(), textContent: text.slice(0, 12000) }; }
-    catch { onProg?.(100); return { pages: [], type: "text", filename: file.name, ext: "TXT", textContent: "[помилка читання]" }; }
+    catch { onProg?.(100); return { pages: [], type: "text", filename: file.name, ext: "TXT", textContent: "[read error]" }; }
   }
   if (nm.endsWith(".docx") || nm.endsWith(".doc")) {
     onProg?.(20);
@@ -352,7 +352,7 @@ async function processFile(file, onProg, sig) {
       const buf = await file.arrayBuffer();
       const result = await window.mammoth.extractRawText({ arrayBuffer: buf });
       onProg?.(100); return { pages: [], type: "text", filename: file.name, ext: "DOCX", textContent: result.value.slice(0, 12000) };
-    } catch { onProg?.(100); return { pages: [], type: "other", filename: file.name, ext: "DOCX", textContent: "[не вдалось прочитати DOCX]" }; }
+    } catch { onProg?.(100); return { pages: [], type: "other", filename: file.name, ext: "DOCX", textContent: "[DOCX read error]" }; }
   }
   if (nm.endsWith(".pdf")) return pdfToPages(file, onProg, sig);
   if (file.type.startsWith("image/")) return imageToB64(file, onProg, sig);
@@ -361,48 +361,48 @@ async function processFile(file, onProg, sig) {
 }
 
 // ─── AI File Classification ───────────────────────────────────────────────────
-const FILE_CATEGORIES = ["Планування", "Фасад / розріз", "Стиль / мудборд", "Матеріали та оздоблення", "Меблі та предмети", "ТЗ текстом", "Техвимоги"];
+const FILE_CATEGORIES = ["Floor Plan", "Elevation / Section", "Style / Moodboard", "Materials & Finishes", "Furniture & Objects", "Brief (Text)", "Tech Requirements"];
 const CATEGORY_COLOR = {
-  "Планування": "#2980b9", "Фасад / розріз": "#e67e22", "Стиль / мудборд": "#8e44ad",
-  "Матеріали та оздоблення": "#27ae60", "Меблі та предмети": "#16a085",
-  "ТЗ текстом": "#2c3e50", "Техвимоги": "#7f8c8d", "Невизначено": "#bbb",
+  "Floor Plan": "#2980b9", "Elevation / Section": "#e67e22", "Style / Moodboard": "#8e44ad",
+  "Materials & Finishes": "#27ae60", "Furniture & Objects": "#16a085",
+  "Brief (Text)": "#2c3e50", "Tech Requirements": "#7f8c8d", "Unclassified": "#bbb",
 };
 const CATEGORY_SHORT = {
-  "Планування": "ПЛАН", "Фасад / розріз": "ФАСАД", "Стиль / мудборд": "СТИЛЬ",
-  "Матеріали та оздоблення": "МАТЕР.", "Меблі та предмети": "МЕБЛІ",
-  "ТЗ текстом": "ТЗ", "Техвимоги": "ТЕХН.", "Невизначено": "?",
+  "Floor Plan": "PLAN", "Elevation / Section": "ELEV.", "Style / Moodboard": "STYLE",
+  "Materials & Finishes": "MAT.", "Furniture & Objects": "FURN.",
+  "Brief (Text)": "BRIEF", "Tech Requirements": "TECH", "Unclassified": "?",
 };
 
-const PAGE_CATEGORIES = ["Планування", "Фасад / розріз", "Специфікація", "Деталізація", "Легенда / умовні позначення", "Титул / зміст", "Інше"];
+const PAGE_CATEGORIES = ["Floor Plan", "Elevation / Section", "Specification", "Detail", "Legend", "Title / TOC", "Other"];
 const PAGE_CAT_COLOR = {
-  "Планування": "#2980b9", "Фасад / розріз": "#e67e22", "Специфікація": "#27ae60",
-  "Деталізація": "#8e44ad", "Легенда / умовні позначення": "#16a085",
-  "Титул / зміст": "#7f8c8d", "Інше": "#bbb",
+  "Floor Plan": "#2980b9", "Elevation / Section": "#e67e22", "Specification": "#27ae60",
+  "Detail": "#8e44ad", "Legend": "#16a085",
+  "Title / TOC": "#7f8c8d", "Other": "#bbb",
 };
 const PAGE_CAT_SHORT = {
-  "Планування": "ПЛАН", "Фасад / розріз": "ФАСАД", "Специфікація": "СПЕЦИФ.",
-  "Деталізація": "ДЕТАЛЬ", "Легенда / умовні позначення": "ЛЕГЕНДА",
-  "Титул / зміст": "ТИТУЛ", "Інше": "ІНШЕ",
+  "Floor Plan": "PLAN", "Elevation / Section": "ELEV.", "Specification": "SPEC.",
+  "Detail": "DETAIL", "Legend": "LEGEND",
+  "Title / TOC": "TITLE", "Other": "OTHER",
 };
 
 async function classifyPageWithAI(b64, pageNum, filename, apiKey) {
-  if (!apiKey) return "Інше";
+  if (!apiKey) return "Other";
   const cats = PAGE_CATEGORIES.join(", ");
   try {
     const resp = await fetch("https://api.anthropic.com/v1/messages", {
       method: "POST",
       headers: { "Content-Type": "application/json", "anthropic-version": "2023-06-01", "anthropic-dangerous-direct-browser-access": "true", "x-api-key": apiKey },
       body: JSON.stringify({ model: "claude-haiku-4-5-20251001", max_tokens: 60, messages: [{ role: "user", content: [
-        { type: "text", text: `Класифікуй сторінку ${pageNum} з файлу "${filename}" для проекту 3D-візуалізації.\nКатегорії: ${cats}.\nВідповідай ТІЛЬКИ JSON: {"category":"..."}` },
+        { type: "text", text: `Classify page ${pageNum} from file "${filename}" for a 3D visualization project.\nCategories: ${cats}.\nReply ONLY with JSON: {"category":"..."}` },
         { type: "image", source: { type: "base64", media_type: "image/jpeg", data: b64 } },
       ] }] }),
     });
     const data = await resp.json();
     const raw = (data.content || []).map(b => b.text || "").join("");
     const m = raw.match(/\{[\s\S]*?\}/);
-    if (m) { const p = JSON.parse(m[0]); return PAGE_CATEGORIES.includes(p.category) ? p.category : "Інше"; }
+    if (m) { const p = JSON.parse(m[0]); return PAGE_CATEGORIES.includes(p.category) ? p.category : "Other"; }
   } catch { /* ignore */ }
-  return "Інше";
+  return "Other";
 }
 
 async function classifyPagesWithAI(fileId, pages, filename, updateFn) {
@@ -423,10 +423,10 @@ async function classifyPagesWithAI(fileId, pages, filename, updateFn) {
 
 async function classifyFileWithAI(processedFile) {
   const apiKey = (() => { try { return localStorage.getItem("anthropic_api_key") || ""; } catch { return ""; } })();
-  if (!apiKey) return { category: "Невизначено", confidence: "low" };
+  if (!apiKey) return { category: "Unclassified", confidence: "low" };
   const cats = FILE_CATEGORIES.join(", ");
   const parts = [];
-  parts.push({ type: "text", text: `Ти класифікатор файлів для проекту 3D-візуалізації інтер'єру/екстер'єру.\nКатегорії: ${cats}.\nФайл: ${processedFile.filename}${processedFile.textContent ? `\nЗміст (уривок):\n${processedFile.textContent.slice(0, 1500)}` : ""}\nВідповідай ТІЛЬКИ JSON без пояснень: {"category":"одна з категорій вище","confidence":"high|medium|low"}` });
+  parts.push({ type: "text", text: `You are a file classifier for a 3D interior/exterior visualization project.\nCategories: ${cats}.\nFile: ${processedFile.filename}${processedFile.textContent ? `\nContent (excerpt):\n${processedFile.textContent.slice(0, 1500)}` : ""}\nReply ONLY with JSON, no explanation: {"category":"one of the categories above","confidence":"high|medium|low"}` });
   if (processedFile.pages?.[0]?.b64) {
     parts.push({ type: "image", source: { type: "base64", media_type: "image/jpeg", data: processedFile.pages[0].b64 } });
   }
@@ -439,9 +439,9 @@ async function classifyFileWithAI(processedFile) {
     const data = await resp.json();
     const raw = (data.content || []).map(b => b.text || "").join("");
     const m = raw.match(/\{[\s\S]*?\}/);
-    if (m) { const p = JSON.parse(m[0]); return { category: FILE_CATEGORIES.includes(p.category) ? p.category : "Невизначено", confidence: p.confidence || "low" }; }
+    if (m) { const p = JSON.parse(m[0]); return { category: FILE_CATEGORIES.includes(p.category) ? p.category : "Unclassified", confidence: p.confidence || "low" }; }
   } catch { /* ignore */ }
-  return { category: "Невизначено", confidence: "low" };
+  return { category: "Unclassified", confidence: "low" };
 }
 
 // ─── File list hook ───────────────────────────────────────────────────────────
@@ -489,7 +489,7 @@ function useFileList() {
         ref.current = ref.current.map(x => x._id === id ? { ...x, _category: category, _confidence: confidence, _classifying: false } : x);
         bump();
       }).catch(() => {
-        ref.current = ref.current.map(x => x._id === id ? { ...x, _category: "Невизначено", _classifying: false } : x);
+        ref.current = ref.current.map(x => x._id === id ? { ...x, _category: "Unclassified", _classifying: false } : x);
         bump();
       });
 
@@ -538,14 +538,14 @@ function PageGallery({ file, onClose, onTogglePage, onSetPageCategory }) {
         <div style={{ flex: 1 }}>
           <div style={{ fontSize: 11, fontWeight: 700, color: "#f2f0ec", fontFamily: "monospace", letterSpacing: "0.1em" }}>{file.filename}</div>
           <div style={{ fontSize: 9, color: "#666", fontFamily: "monospace", display: "flex", gap: 10 }}>
-            <span>{pages.length} сторінок · {selectedCount} вибрано</span>
-            {textCount > 0 && <span style={{ color: "#2ecc71" }}>T {textCount} з текстом</span>}
-            {textCount === 0 && <span style={{ color: "#e67e22" }}>скан — тільки зображення</span>}
+            <span>{pages.length} pages · {selectedCount} selected</span>
+            {textCount > 0 && <span style={{ color: "#2ecc71" }}>T {textCount} with text</span>}
+            {textCount === 0 && <span style={{ color: "#e67e22" }}>scan — images only</span>}
           </div>
         </div>
         {/* Filter buttons */}
         <div style={{ display: "flex", gap: 4, flexWrap: "wrap" }}>
-          <button onClick={() => setFilter("all")} style={{ fontSize: 8, fontFamily: "monospace", padding: "3px 8px", borderRadius: 3, border: "none", cursor: "pointer", background: filter === "all" ? "#fff" : "#333", color: filter === "all" ? "#000" : "#aaa" }}>ВСІ</button>
+          <button onClick={() => setFilter("all")} style={{ fontSize: 8, fontFamily: "monospace", padding: "3px 8px", borderRadius: 3, border: "none", cursor: "pointer", background: filter === "all" ? "#fff" : "#333", color: filter === "all" ? "#000" : "#aaa" }}>ALL</button>
           {categories.map(cat => (
             <button key={cat} onClick={() => setFilter(cat)} style={{ fontSize: 8, fontFamily: "monospace", padding: "3px 8px", borderRadius: 3, border: "none", cursor: "pointer", background: filter === cat ? (PAGE_CAT_COLOR[cat] || "#555") : "#333", color: "#fff" }}>
               {PAGE_CAT_SHORT[cat] || cat}
@@ -553,11 +553,11 @@ function PageGallery({ file, onClose, onTogglePage, onSetPageCategory }) {
           ))}
         </div>
         {/* Select/deselect all */}
-        <button onClick={() => pages.forEach((_, i) => onTogglePage(i, true))} style={{ fontSize: 9, fontFamily: "monospace", padding: "4px 10px", background: "#2ecc71", color: "#fff", border: "none", borderRadius: 4, cursor: "pointer" }}>Всі ✓</button>
-        <button onClick={() => pages.forEach((_, i) => onTogglePage(i, false))} style={{ fontSize: 9, fontFamily: "monospace", padding: "4px 10px", background: "#444", color: "#aaa", border: "none", borderRadius: 4, cursor: "pointer" }}>Зняти всі</button>
+        <button onClick={() => pages.forEach((_, i) => onTogglePage(i, true))} style={{ fontSize: 9, fontFamily: "monospace", padding: "4px 10px", background: "#2ecc71", color: "#fff", border: "none", borderRadius: 4, cursor: "pointer" }}>All ✓</button>
+        <button onClick={() => pages.forEach((_, i) => onTogglePage(i, false))} style={{ fontSize: 9, fontFamily: "monospace", padding: "4px 10px", background: "#444", color: "#aaa", border: "none", borderRadius: 4, cursor: "pointer" }}>Deselect all</button>
         <button onClick={() => {
-          pages.forEach((pg, i) => onTogglePage(i, pg._category !== "Титул / зміст" && pg._category !== "Інше"));
-        }} style={{ fontSize: 9, fontFamily: "monospace", padding: "4px 10px", background: "#2980b9", color: "#fff", border: "none", borderRadius: 4, cursor: "pointer" }}>Авто-вибір</button>
+          pages.forEach((pg, i) => onTogglePage(i, pg._category !== "Title / TOC" && pg._category !== "Other"));
+        }} style={{ fontSize: 9, fontFamily: "monospace", padding: "4px 10px", background: "#2980b9", color: "#fff", border: "none", borderRadius: 4, cursor: "pointer" }}>Auto-select</button>
         <button onClick={onClose} style={{ fontSize: 14, background: "transparent", border: "none", color: "#888", cursor: "pointer", padding: "0 4px" }}>✕</button>
       </div>
 
@@ -587,7 +587,7 @@ function PageGallery({ file, onClose, onTogglePage, onSetPageCategory }) {
                   {/* Text layer indicator */}
                   {pg.text && (
                     <button onClick={e => { e.stopPropagation(); setTextPage(isTextActive ? null : globalIdx); }}
-                      title="Переглянути витягнутий текст"
+                      title="View extracted text"
                       style={{ position: "absolute", top: 6, left: 6, background: isTextActive ? "#f39c12" : "rgba(0,0,0,0.55)", border: "none", borderRadius: 3, color: "#fff", fontSize: 8, fontFamily: "monospace", fontWeight: 700, padding: "2px 5px", cursor: "pointer", letterSpacing: "0.05em" }}>
                       T
                     </button>
@@ -600,11 +600,11 @@ function PageGallery({ file, onClose, onTogglePage, onSetPageCategory }) {
                 {/* Category badge */}
                 <div style={{ padding: "5px 8px", display: "flex", alignItems: "center", gap: 4, background: selected ? "#fafafa" : "#222" }}>
                   {pg._classifying
-                    ? <div style={{ fontSize: 8, color: "#bbb", fontFamily: "monospace", animation: "pulse 1s infinite" }}>класифікую…</div>
+                    ? <div style={{ fontSize: 8, color: "#bbb", fontFamily: "monospace", animation: "pulse 1s infinite" }}>classifying…</div>
                     : <>
                         <div style={{ width: 8, height: 8, borderRadius: "50%", background: catColor, flexShrink: 0 }} />
                         <select
-                          value={cat || "Інше"}
+                          value={cat || "Other"}
                           onChange={e => { e.stopPropagation(); onSetPageCategory(globalIdx, e.target.value); }}
                           onClick={e => e.stopPropagation()}
                           style={{ fontSize: 8, fontFamily: "monospace", border: "none", background: "transparent", color: selected ? "#333" : "#aaa", cursor: "pointer", flex: 1, outline: "none" }}>
@@ -623,17 +623,17 @@ function PageGallery({ file, onClose, onTogglePage, onSetPageCategory }) {
         {textPage !== null && pages[textPage] && (
           <div style={{ width: 320, background: "#0f0f0f", borderLeft: "1px solid #2a2a2a", display: "flex", flexDirection: "column", flexShrink: 0 }}>
             <div style={{ padding: "10px 14px", borderBottom: "1px solid #222", display: "flex", alignItems: "center", gap: 8, flexShrink: 0 }}>
-              <span style={{ fontSize: 9, fontFamily: "monospace", color: "#f39c12", fontWeight: 700 }}>ТЕКСТ</span>
-              <span style={{ fontSize: 9, fontFamily: "monospace", color: "#555" }}>стор. {textPage + 1}</span>
+              <span style={{ fontSize: 9, fontFamily: "monospace", color: "#f39c12", fontWeight: 700 }}>TEXT</span>
+              <span style={{ fontSize: 9, fontFamily: "monospace", color: "#555" }}>p. {textPage + 1}</span>
               <span style={{ fontSize: 9, fontFamily: "monospace", color: "#444", flex: 1, textAlign: "right" }}>
-                {pages[textPage].text ? `${pages[textPage].text.length} симв.` : ""}
+                {pages[textPage].text ? `${pages[textPage].text.length} chars` : ""}
               </span>
               <button onClick={() => setTextPage(null)} style={{ background: "none", border: "none", color: "#555", cursor: "pointer", fontSize: 14, lineHeight: 1 }}>✕</button>
             </div>
             <div style={{ flex: 1, overflowY: "auto", padding: "12px 14px" }}>
               {pages[textPage].text
                 ? <pre style={{ fontSize: 10, color: "#bbb", fontFamily: "monospace", whiteSpace: "pre-wrap", lineHeight: 1.7, margin: 0 }}>{pages[textPage].text}</pre>
-                : <div style={{ fontSize: 10, color: "#555", fontFamily: "monospace" }}>Текстовий шар відсутній — сторінка є скан або зображення.</div>
+                : <div style={{ fontSize: 10, color: "#555", fontFamily: "monospace" }}>No text layer — page is a scan or image.</div>
               }
             </div>
           </div>
@@ -643,11 +643,11 @@ function PageGallery({ file, onClose, onTogglePage, onSetPageCategory }) {
       {/* Footer */}
       <div style={{ background: "#1a1a1a", padding: "10px 20px", display: "flex", alignItems: "center", gap: 12, flexShrink: 0 }}>
         <div style={{ fontSize: 10, color: "#888", fontFamily: "monospace", flex: 1 }}>
-          Вибрано <strong style={{ color: "#f2f0ec" }}>{selectedCount}</strong> з {pages.length} сторінок для відправки Claude
-          {textCount > 0 && <span style={{ color: "#2ecc71", marginLeft: 8 }}>· {textCount} з текстом</span>}
+          <strong style={{ color: "#f2f0ec" }}>{selectedCount}</strong> of {pages.length} pages selected for Claude
+          {textCount > 0 && <span style={{ color: "#2ecc71", marginLeft: 8 }}>· {textCount} with text</span>}
         </div>
         <button onClick={onClose} style={{ fontSize: 11, fontFamily: "monospace", padding: "8px 20px", background: "#f2f0ec", color: "#1a1a1a", border: "none", borderRadius: 6, cursor: "pointer", fontWeight: 700 }}>
-          Підтвердити вибір →
+          Confirm selection →
         </button>
       </div>
     </div>
@@ -675,7 +675,7 @@ function UploadBox({ label, files, onAdd, onRemove, onUpdateFile, color = "#888"
         <div style={{ display: "flex", gap: 6, flexWrap: "wrap", alignItems: "center", justifyContent: files.length === 0 ? "center" : "flex-start" }}>
           {files.map((f, i) => {
             const prev = f.preview || f.pages?.[0]?.preview;
-            const textFailed = f.textContent?.includes("не вдалась") || f.textContent?.includes("помилка читання");
+            const textFailed = f.textContent?.includes("read error") || f.textContent?.includes("DWG read error");
             const hasWarning = f._done && !f._error && textFailed && !f.pages?.length;
             const statusColor = f._error ? "#e74c3c" : hasWarning ? "#e67e22" : f._done ? "#27ae60" : "#ddd";
             return (
@@ -728,7 +728,7 @@ function UploadBox({ label, files, onAdd, onRemove, onUpdateFile, color = "#888"
                     <div style={{ fontSize: 7, fontFamily: "monospace", fontWeight: 700,
                       color: "#fff", background: "#27ae60",
                       padding: "2px 5px", borderRadius: 3, letterSpacing: "0.08em", maxWidth: 70, textAlign: "center" }}
-                      title={isScan ? `Сканований PDF — розбір через зображення (${total} стор.)` : `Текстовий PDF — ${textPages} з ${total} сторінок мають текст`}>
+                      title={isScan ? `Scanned PDF — processed as images (${total} pages)` : `Text PDF — ${textPages} of ${total} pages have text`}>
                       {`PDF ${total}`}
                     </div>
                   );
@@ -738,10 +738,10 @@ function UploadBox({ label, files, onAdd, onRemove, onUpdateFile, color = "#888"
           })}
           <div onClick={() => inputRef.current.click()} style={{ width: 70, height: 70, border: `2px dashed ${color}`, borderRadius: 8, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", cursor: "pointer", flexShrink: 0 }}>
             <div style={{ fontSize: 20, color }}>+</div>
-            <div style={{ fontSize: 8, color: "#bbb", fontFamily: "monospace" }}>додати</div>
+            <div style={{ fontSize: 8, color: "#bbb", fontFamily: "monospace" }}>add</div>
           </div>
         </div>
-        {!drag && <div style={{ fontSize: 8, color: "#ccc", fontFamily: "monospace", textAlign: "center", marginTop: 4 }}>↑ або перетягніть</div>}
+        {!drag && <div style={{ fontSize: 8, color: "#ccc", fontFamily: "monospace", textAlign: "center", marginTop: 4 }}>↑ or drop here</div>}
       </div>
       {files.length > 0 && (
         <div style={{ marginTop: 8, borderRadius: 6, border: "1px solid #e8e8e8", overflow: "hidden", fontSize: 10, fontFamily: "monospace" }}>
@@ -754,10 +754,10 @@ function UploadBox({ label, files, onAdd, onRemove, onUpdateFile, color = "#888"
             const dot = isLoading ? "⏳" : isError ? "✕" : isOk ? "✓" : "·";
             const dotColor = isError ? "#e74c3c" : isOk ? "#27ae60" : "#aaa";
             let msg = "";
-            if (isLoading) msg = "обробляється...";
+            if (isLoading) msg = "processing...";
             else if (isError) msg = f._error.length > 60 ? f._error.slice(0, 60) + "…" : f._error;
-            else if (isPdfScan) msg = "готовий до аналізу";
-            else if (isOk) msg = "готовий до аналізу";
+            else if (isPdfScan) msg = "ready for analysis";
+            else if (isOk) msg = "ready for analysis";
             const shortName = f.filename?.length > 30 ? f.filename.slice(0, 28) + "…" : f.filename;
             return (
               <div key={f._id || i} style={{ display: "flex", alignItems: "center", gap: 6, padding: "5px 10px", background: bg, borderBottom: i < files.length - 1 ? "1px solid #f0f0f0" : "none" }}>
@@ -812,9 +812,9 @@ async function callAPI(parts, retries = 2, apiKey = "") {
         throw new Error(`API ${resp.status}: ${data?.error?.message || ""}`);
       }
       const raw = (data.content || []).map(b => b.text || "").join("");
-      if (!raw.trim()) throw new Error("Порожня відповідь");
+      if (!raw.trim()) throw new Error("Empty response");
       const m = raw.match(/```json\s*([\s\S]*?)```/) || raw.match(/```\s*([\s\S]*?)```/) || raw.match(/(\{[\s\S]*\})/);
-      if (!m) throw new Error("JSON не знайдено");
+      if (!m) throw new Error("JSON not found");
       try { return JSON.parse(m[1]); }
       catch (parseErr) {
         if (attempt < retries) { await new Promise(r => setTimeout(r, 1500 * (attempt + 1))); continue; }
@@ -836,8 +836,8 @@ function filesToParts(files, fallbackLabel) {
       parts.push({ type: "text", text: `${fullLabel}:\n${f.textContent}` });
     }
     (f.pages || []).filter(p => p.b64 && p._selected !== false).forEach((pg, pi) => {
-      const pageLabel = `${fullLabel}${pi > 0 ? ` стор.${pi + 1}` : ""}`;
-      if (pg.text) parts.push({ type: "text", text: `${pageLabel} — витягнутий текст (використовуй для точних розмірів, матеріалів та специфікацій):\n${pg.text}` });
+      const pageLabel = `${fullLabel}${pi > 0 ? ` p.${pi + 1}` : ""}`;
+      if (pg.text) parts.push({ type: "text", text: `${pageLabel} — extracted text (use for exact dimensions, materials and specs):\n${pg.text}` });
       // Text-rich pages (e.g. TZ docs, specs): skip image — text layer is sufficient
       // Visual pages (scans, moodboards, drawings): always send image
       if (pg._textRich) return;
@@ -856,13 +856,13 @@ const PDF_DIRECT_LIMIT = 15;
 
 async function preExtractPageBatch(pages, fileLabel, apiKey) {
   const parts = [{ type: "text", text:
-    `Ти аналізуєш сторінки PDF "${fileLabel}" для проекту 3D-візуалізації.\n` +
-    `Витягни ВСЕ що є на кожній сторінці: меблі, матеріали, кольори, розміри, стиль, URL-посилання, коментарі клієнта, технічні вимоги, позначення на кресленнях.\n` +
-    `Формат відповіді — по одному рядку на знахідку, з номером сторінки: "[стор.N] знахідка".\n` +
-    `Не пропускай нічого. Без JSON, без вступу.`
+    `You are analyzing pages of PDF "${fileLabel}" for a 3D visualization project.\n` +
+    `Extract EVERYTHING on each page: furniture, materials, colors, dimensions, style, URLs, client comments, technical requirements, drawing annotations.\n` +
+    `Format: one finding per line with page number: "[p.N] finding".\n` +
+    `Miss nothing. No JSON, no preamble.`
   }];
   for (const pg of pages) {
-    parts.push({ type: "text", text: `=== СТОРІНКА ${pg.pageNum} ===` });
+    parts.push({ type: "text", text: `=== PAGE ${pg.pageNum} ===` });
     if (pg.text) parts.push({ type: "text", text: pg.text });
     if (pg.b64) parts.push({ type: "image", source: { type: "base64", media_type: pg.mediaType || "image/jpeg", data: pg.b64 } });
   }
@@ -891,7 +891,7 @@ async function preProcessLargeFiles(files, apiKey, onStatus) {
     for (let ci = 0; ci < chunks.length; ci++) {
       const first = chunks[ci][0].pageNum;
       const last = chunks[ci][chunks[ci].length - 1].pageNum;
-      onStatus?.(`"${f.filename}" — пачка ${ci + 1}/${chunks.length} (стор. ${first}–${last})…`);
+      onStatus?.(`"${f.filename}" — batch ${ci + 1}/${chunks.length} (p. ${first}–${last})…`);
       const text = await preExtractPageBatch(chunks[ci], label, apiKey);
       extractedParts.push(text);
     }
@@ -901,7 +901,7 @@ async function preProcessLargeFiles(files, apiKey, onStatus) {
     const sampleIdxs = [...new Set([0, Math.floor(n / 2), n - 1])];
     const samplePages = sampleIdxs.map(i => activePgs[i]);
 
-    const extractedText = `=== Витягнутий зміст "${label}" (${n} стор.) ===\n` + extractedParts.join("\n");
+    const extractedText = `=== Extracted content "${label}" (${n} pages) ===\n` + extractedParts.join("\n");
     result.push({ ...f, textContent: (f.textContent ? f.textContent + "\n\n" : "") + extractedText, pages: samplePages, _preExtracted: true, _totalPages: n });
   }
   return result;
@@ -911,40 +911,40 @@ async function preProcessLargeFiles(files, apiKey, onStatus) {
 const SOW_TEMPLATES = {
   "Residential Interior": {
     items: [
-      { text: "Type of buildings", cat: "Вимоги клієнта" },
-      { text: "Type of project", cat: "Вимоги клієнта" },
-      { text: "Required Rooms", cat: "Вимоги клієнта" },
-      { text: "Type of renderings", cat: "Технічні вимоги" },
-      { text: "Purpose", cat: "Технічні вимоги" },
-      { text: "Number of images", cat: "Технічні вимоги" },
-      { text: "Aspect ratio", cat: "Технічні вимоги" },
-      { text: "Resolution", cat: "Технічні вимоги" },
-      { text: "DPI", cat: "Технічні вимоги" },
-      { text: "File Format", cat: "Технічні вимоги" },
-      { text: "Naming", cat: "Технічні вимоги" },
-      { text: "Render elements", cat: "Технічні вимоги" },
-      { text: "Additional services", cat: "Технічні вимоги" },
-      { text: "File Delivery", cat: "Технічні вимоги" },
-      { text: "Any additional info", cat: "Вимоги клієнта" },
-      { text: "Camera angle preferences", cat: "Вимоги клієнта" },
-      { text: "Drawings", cat: "Креслення" },
-      { text: "Model", cat: "Меблі та предмети" },
-      { text: "Furniture Details", cat: "Меблі та предмети" },
-      { text: "3D Model Selection", cat: "Меблі та предмети" },
-      { text: "Furniture/lighting brands", cat: "Меблі та предмети" },
-      { text: "Geolocation", cat: "Референси" },
-      { text: "Views from Window", cat: "Референси" },
-      { text: "Type of view", cat: "Референси" },
-      { text: "People", cat: "Вимоги клієнта" },
-      { text: "Clothing", cat: "Вимоги клієнта" },
-      { text: "Number of people", cat: "Вимоги клієнта" },
-      { text: "Lighting Setup", cat: "Референси" },
-      { text: "Artificial Lighting", cat: "Референси" },
-      { text: "Shadows", cat: "Референси" },
-      { text: "Furniture Placement", cat: "Меблі та предмети" },
-      { text: "Materials", cat: "Матеріали та оздоблення" },
-      { text: "Decor and Accessories", cat: "Меблі та предмети" },
-      { text: "Use of Colors", cat: "Матеріали та оздоблення" },
+      { text: "Type of buildings", cat: "Client Requirements" },
+      { text: "Type of project", cat: "Client Requirements" },
+      { text: "Required Rooms", cat: "Client Requirements" },
+      { text: "Type of renderings", cat: "Technical Requirements" },
+      { text: "Purpose", cat: "Technical Requirements" },
+      { text: "Number of images", cat: "Technical Requirements" },
+      { text: "Aspect ratio", cat: "Technical Requirements" },
+      { text: "Resolution", cat: "Technical Requirements" },
+      { text: "DPI", cat: "Technical Requirements" },
+      { text: "File Format", cat: "Technical Requirements" },
+      { text: "Naming", cat: "Technical Requirements" },
+      { text: "Render elements", cat: "Technical Requirements" },
+      { text: "Additional services", cat: "Technical Requirements" },
+      { text: "File Delivery", cat: "Technical Requirements" },
+      { text: "Any additional info", cat: "Client Requirements" },
+      { text: "Camera angle preferences", cat: "Client Requirements" },
+      { text: "Drawings", cat: "Drawings" },
+      { text: "Model", cat: "Furniture & Objects" },
+      { text: "Furniture Details", cat: "Furniture & Objects" },
+      { text: "3D Model Selection", cat: "Furniture & Objects" },
+      { text: "Furniture/lighting brands", cat: "Furniture & Objects" },
+      { text: "Geolocation", cat: "References" },
+      { text: "Views from Window", cat: "References" },
+      { text: "Type of view", cat: "References" },
+      { text: "People", cat: "Client Requirements" },
+      { text: "Clothing", cat: "Client Requirements" },
+      { text: "Number of people", cat: "Client Requirements" },
+      { text: "Lighting Setup", cat: "References" },
+      { text: "Artificial Lighting", cat: "References" },
+      { text: "Shadows", cat: "References" },
+      { text: "Furniture Placement", cat: "Furniture & Objects" },
+      { text: "Materials", cat: "Materials & Finishes" },
+      { text: "Decor and Accessories", cat: "Furniture & Objects" },
+      { text: "Use of Colors", cat: "Materials & Finishes" },
     ],
     defaults: {
       "Type of buildings": "Residential",
@@ -977,40 +977,40 @@ const SOW_TEMPLATES = {
   },
   "Commercial Interior": {
     items: [
-      { text: "Type of buildings", cat: "Вимоги клієнта" },
-      { text: "Type of project", cat: "Вимоги клієнта" },
-      { text: "Required Rooms", cat: "Вимоги клієнта" },
-      { text: "Type of renderings", cat: "Технічні вимоги" },
-      { text: "Purpose", cat: "Технічні вимоги" },
-      { text: "Number of images", cat: "Технічні вимоги" },
-      { text: "Aspect ratio", cat: "Технічні вимоги" },
-      { text: "Resolution", cat: "Технічні вимоги" },
-      { text: "DPI", cat: "Технічні вимоги" },
-      { text: "File Format", cat: "Технічні вимоги" },
-      { text: "Naming", cat: "Технічні вимоги" },
-      { text: "Render elements", cat: "Технічні вимоги" },
-      { text: "Additional services", cat: "Технічні вимоги" },
-      { text: "File Delivery", cat: "Технічні вимоги" },
-      { text: "Any additional info", cat: "Вимоги клієнта" },
-      { text: "Camera angle preferences", cat: "Вимоги клієнта" },
-      { text: "Drawings", cat: "Креслення" },
-      { text: "Model", cat: "Меблі та предмети" },
-      { text: "Furniture Details", cat: "Меблі та предмети" },
-      { text: "3D Model Selection", cat: "Меблі та предмети" },
-      { text: "Furniture/lighting brands", cat: "Меблі та предмети" },
-      { text: "Geolocation", cat: "Референси" },
-      { text: "Views from Window", cat: "Референси" },
-      { text: "Type of view", cat: "Референси" },
-      { text: "People", cat: "Вимоги клієнта" },
-      { text: "Clothing", cat: "Вимоги клієнта" },
-      { text: "Number of people", cat: "Вимоги клієнта" },
-      { text: "Lighting Setup", cat: "Референси" },
-      { text: "Artificial Lighting", cat: "Референси" },
-      { text: "Shadows", cat: "Референси" },
-      { text: "Furniture Placement", cat: "Меблі та предмети" },
-      { text: "Materials", cat: "Матеріали та оздоблення" },
-      { text: "Decor and Accessories", cat: "Меблі та предмети" },
-      { text: "Use of Colors", cat: "Матеріали та оздоблення" },
+      { text: "Type of buildings", cat: "Client Requirements" },
+      { text: "Type of project", cat: "Client Requirements" },
+      { text: "Required Rooms", cat: "Client Requirements" },
+      { text: "Type of renderings", cat: "Technical Requirements" },
+      { text: "Purpose", cat: "Technical Requirements" },
+      { text: "Number of images", cat: "Technical Requirements" },
+      { text: "Aspect ratio", cat: "Technical Requirements" },
+      { text: "Resolution", cat: "Technical Requirements" },
+      { text: "DPI", cat: "Technical Requirements" },
+      { text: "File Format", cat: "Technical Requirements" },
+      { text: "Naming", cat: "Technical Requirements" },
+      { text: "Render elements", cat: "Technical Requirements" },
+      { text: "Additional services", cat: "Technical Requirements" },
+      { text: "File Delivery", cat: "Technical Requirements" },
+      { text: "Any additional info", cat: "Client Requirements" },
+      { text: "Camera angle preferences", cat: "Client Requirements" },
+      { text: "Drawings", cat: "Drawings" },
+      { text: "Model", cat: "Furniture & Objects" },
+      { text: "Furniture Details", cat: "Furniture & Objects" },
+      { text: "3D Model Selection", cat: "Furniture & Objects" },
+      { text: "Furniture/lighting brands", cat: "Furniture & Objects" },
+      { text: "Geolocation", cat: "References" },
+      { text: "Views from Window", cat: "References" },
+      { text: "Type of view", cat: "References" },
+      { text: "People", cat: "Client Requirements" },
+      { text: "Clothing", cat: "Client Requirements" },
+      { text: "Number of people", cat: "Client Requirements" },
+      { text: "Lighting Setup", cat: "References" },
+      { text: "Artificial Lighting", cat: "References" },
+      { text: "Shadows", cat: "References" },
+      { text: "Furniture Placement", cat: "Furniture & Objects" },
+      { text: "Materials", cat: "Materials & Finishes" },
+      { text: "Decor and Accessories", cat: "Furniture & Objects" },
+      { text: "Use of Colors", cat: "Materials & Finishes" },
     ],
     defaults: {
       "Type of buildings": "Commercial",
@@ -1043,27 +1043,27 @@ const SOW_TEMPLATES = {
   },
   "Exterior": {
     items: [
-      { text: "Type of buildings", cat: "Вимоги клієнта" },
-      { text: "Type of project", cat: "Вимоги клієнта" },
-      { text: "Purpose", cat: "Технічні вимоги" },
-      { text: "Aspect ratio", cat: "Технічні вимоги" },
-      { text: "Resolution", cat: "Технічні вимоги" },
-      { text: "DPI", cat: "Технічні вимоги" },
-      { text: "File Format", cat: "Технічні вимоги" },
-      { text: "Neighboring buildings", cat: "Референси" },
-      { text: "Camera angles 1", cat: "Вимоги клієнта" },
-      { text: "Camera angles 2", cat: "Вимоги клієнта" },
-      { text: "Landscape plan", cat: "Креслення" },
-      { text: "Materials", cat: "Матеріали та оздоблення" },
-      { text: "Unique elements", cat: "Вимоги клієнта" },
-      { text: "Season", cat: "Референси" },
-      { text: "Time", cat: "Референси" },
-      { text: "Sky", cat: "Референси" },
-      { text: "Inside house", cat: "Вимоги клієнта" },
-      { text: "Glass", cat: "Вимоги клієнта" },
-      { text: "Artificial Lighting", cat: "Референси" },
-      { text: "People", cat: "Вимоги клієнта" },
-      { text: "Cars", cat: "Вимоги клієнта" },
+      { text: "Type of buildings", cat: "Client Requirements" },
+      { text: "Type of project", cat: "Client Requirements" },
+      { text: "Purpose", cat: "Technical Requirements" },
+      { text: "Aspect ratio", cat: "Technical Requirements" },
+      { text: "Resolution", cat: "Technical Requirements" },
+      { text: "DPI", cat: "Technical Requirements" },
+      { text: "File Format", cat: "Technical Requirements" },
+      { text: "Neighboring buildings", cat: "References" },
+      { text: "Camera angles 1", cat: "Client Requirements" },
+      { text: "Camera angles 2", cat: "Client Requirements" },
+      { text: "Landscape plan", cat: "Drawings" },
+      { text: "Materials", cat: "Materials & Finishes" },
+      { text: "Unique elements", cat: "Client Requirements" },
+      { text: "Season", cat: "References" },
+      { text: "Time", cat: "References" },
+      { text: "Sky", cat: "References" },
+      { text: "Inside house", cat: "Client Requirements" },
+      { text: "Glass", cat: "Client Requirements" },
+      { text: "Artificial Lighting", cat: "References" },
+      { text: "People", cat: "Client Requirements" },
+      { text: "Cars", cat: "Client Requirements" },
     ],
     defaults: {
       "Type of buildings": "Residential",
@@ -1091,35 +1091,35 @@ const SOW_TEMPLATES = {
   },
   "Lifestyle": {
     items: [
-      { text: "Scene Type", cat: "Сцена" },
-      { text: "Reference usage", cat: "Сцена" },
-      { text: "Purpose", cat: "Технічні вимоги" },
-      { text: "Aspect ratio", cat: "Технічні вимоги" },
-      { text: "Resolution", cat: "Технічні вимоги" },
-      { text: "DPI", cat: "Технічні вимоги" },
-      { text: "File Format", cat: "Технічні вимоги" },
-      { text: "Views Per Scene", cat: "Технічні вимоги" },
-      { text: "Naming", cat: "Технічні вимоги" },
-      { text: "File Delivery", cat: "Технічні вимоги" },
-      { text: "Render Elements", cat: "Технічні вимоги" },
-      { text: "Geolocation", cat: "Сцена" },
-      { text: "View from Window", cat: "Сцена" },
-      { text: "Type of view", cat: "Сцена" },
-      { text: "Model", cat: "Продукт" },
-      { text: "Furniture Layout", cat: "Продукт" },
-      { text: "Furniture Details", cat: "Продукт" },
-      { text: "3D Model Selection", cat: "Продукт" },
-      { text: "People", cat: "Сцена" },
-      { text: "Lighting", cat: "Сцена" },
-      { text: "Artificial", cat: "Сцена" },
-      { text: "Shadows", cat: "Сцена" },
-      { text: "Furniture Placement", cat: "Продукт" },
-      { text: "Materials", cat: "Матеріали та текстури" },
-      { text: "Decor", cat: "Продукт" },
-      { text: "Colors", cat: "Матеріали та текстури" },
-      { text: "Season", cat: "Сцена" },
-      { text: "Time", cat: "Сцена" },
-      { text: "Sky", cat: "Сцена" },
+      { text: "Scene Type", cat: "Scene" },
+      { text: "Reference usage", cat: "Scene" },
+      { text: "Purpose", cat: "Technical Requirements" },
+      { text: "Aspect ratio", cat: "Technical Requirements" },
+      { text: "Resolution", cat: "Technical Requirements" },
+      { text: "DPI", cat: "Technical Requirements" },
+      { text: "File Format", cat: "Technical Requirements" },
+      { text: "Views Per Scene", cat: "Technical Requirements" },
+      { text: "Naming", cat: "Technical Requirements" },
+      { text: "File Delivery", cat: "Technical Requirements" },
+      { text: "Render Elements", cat: "Technical Requirements" },
+      { text: "Geolocation", cat: "Scene" },
+      { text: "View from Window", cat: "Scene" },
+      { text: "Type of view", cat: "Scene" },
+      { text: "Model", cat: "Product" },
+      { text: "Furniture Layout", cat: "Product" },
+      { text: "Furniture Details", cat: "Product" },
+      { text: "3D Model Selection", cat: "Product" },
+      { text: "People", cat: "Scene" },
+      { text: "Lighting", cat: "Scene" },
+      { text: "Artificial", cat: "Scene" },
+      { text: "Shadows", cat: "Scene" },
+      { text: "Furniture Placement", cat: "Product" },
+      { text: "Materials", cat: "Materials & Textures" },
+      { text: "Decor", cat: "Product" },
+      { text: "Colors", cat: "Materials & Textures" },
+      { text: "Season", cat: "Scene" },
+      { text: "Time", cat: "Scene" },
+      { text: "Sky", cat: "Scene" },
     ],
     defaults: {
       "Scene Type": "Exterior + Interior + Residential",
@@ -1155,22 +1155,22 @@ const SOW_TEMPLATES = {
   },
   "Silo": {
     items: [
-      { text: "Purpose", cat: "Технічні вимоги" },
-      { text: "Model", cat: "Продукт" },
-      { text: "Additional visualization services", cat: "Технічні вимоги" },
-      { text: "Camera angles", cat: "Ракурси та подача" },
-      { text: "Background Fill", cat: "Ракурси та подача" },
-      { text: "Image Framing", cat: "Ракурси та подача" },
-      { text: "Shadow Position", cat: "Ракурси та подача" },
-      { text: "Decor", cat: "Ракурси та подача" },
-      { text: "Resolution", cat: "Технічні вимоги" },
-      { text: "DPI", cat: "Технічні вимоги" },
-      { text: "File Format", cat: "Технічні вимоги" },
-      { text: "File size", cat: "Технічні вимоги" },
-      { text: "Aspect ratio", cat: "Технічні вимоги" },
-      { text: "Crop", cat: "Технічні вимоги" },
-      { text: "Naming", cat: "Технічні вимоги" },
-      { text: "Render elements", cat: "Технічні вимоги" },
+      { text: "Purpose", cat: "Technical Requirements" },
+      { text: "Model", cat: "Product" },
+      { text: "Additional visualization services", cat: "Technical Requirements" },
+      { text: "Camera angles", cat: "Angles & Delivery" },
+      { text: "Background Fill", cat: "Angles & Delivery" },
+      { text: "Image Framing", cat: "Angles & Delivery" },
+      { text: "Shadow Position", cat: "Angles & Delivery" },
+      { text: "Decor", cat: "Angles & Delivery" },
+      { text: "Resolution", cat: "Technical Requirements" },
+      { text: "DPI", cat: "Technical Requirements" },
+      { text: "File Format", cat: "Technical Requirements" },
+      { text: "File size", cat: "Technical Requirements" },
+      { text: "Aspect ratio", cat: "Technical Requirements" },
+      { text: "Crop", cat: "Technical Requirements" },
+      { text: "Naming", cat: "Technical Requirements" },
+      { text: "Render elements", cat: "Technical Requirements" },
     ],
     defaults: {
       "Purpose": "Website + Digital catalog",
@@ -1193,71 +1193,71 @@ const SOW_TEMPLATES = {
   },
   "Masterplan": {
     items: [
-      { text: "Генплан з масштабом", cat: "Креслення" },
-      { text: "Типологія будівель", cat: "Вимоги клієнта" },
-      { text: "Озеленення та ландшафт", cat: "Вимоги клієнта" },
-      { text: "Дороги та інфраструктура", cat: "Вимоги клієнта" },
-      { text: "Час доби та сезон", cat: "Референси" },
-      { text: "Стиль подачі", cat: "Вимоги клієнта" },
-      { text: "Формат та дедлайн", cat: "Технічні вимоги" },
+      { text: "Site plan with scale", cat: "Drawings" },
+      { text: "Building typology", cat: "Client Requirements" },
+      { text: "Landscaping and greenery", cat: "Client Requirements" },
+      { text: "Roads and infrastructure", cat: "Client Requirements" },
+      { text: "Time of day and season", cat: "References" },
+      { text: "Presentation style", cat: "Client Requirements" },
+      { text: "Format and deadline", cat: "Technical Requirements" },
     ],
     defaults: {},
   },
   "Product Rendering": {
     items: [
-      { text: "3D-модель продукту: надає клієнт (.3ds / .fbx / .obj) або моделюємо з нуля", cat: "Меблі та предмети" },
-      { text: "Якщо модель від клієнта: відповідність референсам, відсутність дефектів геометрії", cat: "Вимоги клієнта" },
-      { text: "Технічні креслення або CAD-файл (DWG, PDF, wireframe) — якщо моделюємо", cat: "Креслення" },
-      { text: "Якщо креслень немає: габарити продукту (висота / ширина / глибина) + одиниці виміру", cat: "Вимоги клієнта" },
-      { text: "Фото продукту: вигляд спереду, збоку, ззаду, кут 3/4", cat: "Меблі та предмети" },
-      { text: "Фото деталей крупним планом", cat: "Меблі та предмети" },
-      { text: "Матеріали та покриття: фото або посилання на референси матеріалів", cat: "Матеріали та оздоблення" },
-      { text: "Якщо матеріалу немає: посилання на матеріали (від 2000x2000px) + HEX-коди", cat: "Матеріали та оздоблення" },
-      { text: "Тло та оточення: студійний фон / інтер'єр / вулиця / інше", cat: "Вимоги клієнта" },
-      { text: "Якщо студійний фон: колір або градієнт (HEX)", cat: "Вимоги клієнта" },
-      { text: "Якщо сцена: опис або референс оточення", cat: "Референси" },
-      { text: "Освітлення: студійне (за замовчуванням) / природне / декоративне / мішане", cat: "Референси" },
-      { text: "Настрій / час доби (за замовчуванням: день)", cat: "Референси" },
-      { text: "Ракурси / кути камери: Front / Side / Hero Shot / Close-up / 3/4 / інше", cat: "Вимоги клієнта" },
-      { text: "Кількість ракурсів", cat: "Технічні вимоги" },
-      { text: "Референси стилю подачі з коментарями — що саме взяти", cat: "Референси" },
-      { text: "Роздільність: 2K / 4K / 5K", cat: "Технічні вимоги" },
-      { text: "Формат файлу: JPEG / PNG / TIFF / PSD", cat: "Технічні вимоги" },
-      { text: "DPI: 72 (онлайн) / 300 (друк)", cat: "Технічні вимоги" },
-      { text: "Співвідношення сторін: 16x9 / 1x1 / 4x3 / інше", cat: "Технічні вимоги" },
-      { text: "Кількість фінальних зображень", cat: "Технічні вимоги" },
-      { text: "Призначення: сайт / каталог / презентація / соцмережі / друк", cat: "Технічні вимоги" },
-      { text: "Дедлайн", cat: "Технічні вимоги" },
+      { text: "3D model: provided by client (.3ds / .fbx / .obj) or modeled from scratch", cat: "Furniture & Objects" },
+      { text: "If client model: compliance with references, no geometry defects", cat: "Client Requirements" },
+      { text: "Technical drawings or CAD file (DWG, PDF, wireframe) — if modeling", cat: "Drawings" },
+      { text: "If no drawings: product dimensions (H / W / D) + units", cat: "Client Requirements" },
+      { text: "Product photos: front, side, back, 3/4 angle", cat: "Furniture & Objects" },
+      { text: "Detail close-up photos", cat: "Furniture & Objects" },
+      { text: "Materials and finishes: photos or material reference links", cat: "Materials & Finishes" },
+      { text: "If no material: texture links (min 2000x2000px) + HEX codes", cat: "Materials & Finishes" },
+      { text: "Background: studio / interior / outdoor / other", cat: "Client Requirements" },
+      { text: "If studio background: color or gradient (HEX)", cat: "Client Requirements" },
+      { text: "If scene: description or environment reference", cat: "References" },
+      { text: "Lighting: studio (default) / natural / decorative / mixed", cat: "References" },
+      { text: "Mood / time of day (default: day)", cat: "References" },
+      { text: "Camera angles: Front / Side / Hero Shot / Close-up / 3/4 / other", cat: "Client Requirements" },
+      { text: "Number of angles", cat: "Technical Requirements" },
+      { text: "Style references with comments — what exactly to take", cat: "References" },
+      { text: "Resolution: 2K / 4K / 5K", cat: "Technical Requirements" },
+      { text: "File format: JPEG / PNG / TIFF / PSD", cat: "Technical Requirements" },
+      { text: "DPI: 72 (web) / 300 (print)", cat: "Technical Requirements" },
+      { text: "Aspect ratio: 16x9 / 1x1 / 4x3 / other", cat: "Technical Requirements" },
+      { text: "Number of final images", cat: "Technical Requirements" },
+      { text: "Purpose: website / catalog / presentation / social media / print", cat: "Technical Requirements" },
+      { text: "Deadline", cat: "Technical Requirements" },
     ],
     defaults: {
-      "Роздільність": "4K",
-      "DPI": "72 dpi (онлайн)",
-      "Формат файлу": "JPEG",
-      "Освітлення": "студійне",
-      "Настрій / час доби": "день",
+      "Resolution: 2K / 4K / 5K": "4K",
+      "DPI: 72 (web) / 300 (print)": "72",
+      "File format: JPEG / PNG / TIFF / PSD": "JPEG",
+      "Lighting: studio (default) / natural / decorative / mixed": "studio",
+      "Mood / time of day (default: day)": "day",
     },
   },
   "3D Modeling": {
     items: [
-      { text: "Model Purpose", cat: "Параметри моделінгу" },
-      { text: "Polycount Limit", cat: "Параметри моделінгу" },
-      { text: "Output File Format", cat: "Параметри моделінгу" },
-      { text: "UV Mapping Method", cat: "Параметри моделінгу" },
-      { text: "Level of Details", cat: "Параметри моделінгу" },
-      { text: "Modeling of Internal Parts", cat: "Параметри моделінгу" },
-      { text: "Would you like weld seams", cat: "Параметри моделінгу" },
-      { text: "How should the product be designed", cat: "Параметри моделінгу" },
-      { text: "Render Engine", cat: "Параметри моделінгу" },
-      { text: "3D Scene Units", cat: "Параметри моделінгу" },
-      { text: "File Size Limit (for AR)", cat: "AR-специфікація" },
-      { text: "Output Files for AR", cat: "AR-специфікація" },
-      { text: "Texture Resolution for AR", cat: "AR-специфікація" },
-      { text: "Dimensions", cat: "Референс продукту" },
-      { text: "General Views from Every Side", cat: "Референс продукту" },
-      { text: "Close-Up Views for Details", cat: "Референс продукту" },
-      { text: "Material in High Resolution", cat: "Матеріали та текстури" },
-      { text: "Hex Color Code if Applicable", cat: "Матеріали та текстури" },
-      { text: "Could you confirm photos and drawings match", cat: "Референс продукту" },
+      { text: "Model Purpose", cat: "Modeling Parameters" },
+      { text: "Polycount Limit", cat: "Modeling Parameters" },
+      { text: "Output File Format", cat: "Modeling Parameters" },
+      { text: "UV Mapping Method", cat: "Modeling Parameters" },
+      { text: "Level of Details", cat: "Modeling Parameters" },
+      { text: "Modeling of Internal Parts", cat: "Modeling Parameters" },
+      { text: "Would you like weld seams", cat: "Modeling Parameters" },
+      { text: "How should the product be designed", cat: "Modeling Parameters" },
+      { text: "Render Engine", cat: "Modeling Parameters" },
+      { text: "3D Scene Units", cat: "Modeling Parameters" },
+      { text: "File Size Limit (for AR)", cat: "AR Specification" },
+      { text: "Output Files for AR", cat: "AR Specification" },
+      { text: "Texture Resolution for AR", cat: "AR Specification" },
+      { text: "Dimensions", cat: "Product Reference" },
+      { text: "General Views from Every Side", cat: "Product Reference" },
+      { text: "Close-Up Views for Details", cat: "Product Reference" },
+      { text: "Material in High Resolution", cat: "Materials & Textures" },
+      { text: "Hex Color Code if Applicable", cat: "Materials & Textures" },
+      { text: "Could you confirm photos and drawings match", cat: "Product Reference" },
     ],
     defaults: {
       "Model Purpose": "3D rendering (white background, lifestyle, exterior)",
@@ -1278,27 +1278,27 @@ const SOW_TEMPLATES = {
   },
   "Floorplan": {
     items: [
-      { text: "Type of project", cat: "Вимоги клієнта" },
-      { text: "Purpose of floorplan", cat: "Технічні вимоги" },
-      { text: "Type of plan", cat: "Вимоги клієнта" },
-      { text: "Number of images", cat: "Технічні вимоги" },
-      { text: "Angles for the floorplan", cat: "Вимоги клієнта" },
-      { text: "Level of detail", cat: "Технічні вимоги" },
-      { text: "Provided materials", cat: "Креслення" },
-      { text: "Furniture Placement", cat: "Меблі та предмети" },
-      { text: "Materials", cat: "Матеріали та оздоблення" },
-      { text: "Decor and Accessories", cat: "Меблі та предмети" },
-      { text: "Resolution", cat: "Технічні вимоги" },
-      { text: "DPI", cat: "Технічні вимоги" },
-      { text: "File Format", cat: "Технічні вимоги" },
-      { text: "Render elements", cat: "Технічні вимоги" },
-      { text: "Color of background", cat: "Вимоги клієнта" },
-      { text: "Naming", cat: "Технічні вимоги" },
-      { text: "Lighting options", cat: "Референси" },
-      { text: "Style preference", cat: "Вимоги клієнта" },
-      { text: "Orientation / Scale", cat: "Вимоги клієнта" },
-      { text: "Additional services", cat: "Технічні вимоги" },
-      { text: "File Delivery", cat: "Технічні вимоги" },
+      { text: "Type of project", cat: "Client Requirements" },
+      { text: "Purpose of floorplan", cat: "Technical Requirements" },
+      { text: "Type of plan", cat: "Client Requirements" },
+      { text: "Number of images", cat: "Technical Requirements" },
+      { text: "Angles for the floorplan", cat: "Client Requirements" },
+      { text: "Level of detail", cat: "Technical Requirements" },
+      { text: "Provided materials", cat: "Drawings" },
+      { text: "Furniture Placement", cat: "Furniture & Objects" },
+      { text: "Materials", cat: "Materials & Finishes" },
+      { text: "Decor and Accessories", cat: "Furniture & Objects" },
+      { text: "Resolution", cat: "Technical Requirements" },
+      { text: "DPI", cat: "Technical Requirements" },
+      { text: "File Format", cat: "Technical Requirements" },
+      { text: "Render elements", cat: "Technical Requirements" },
+      { text: "Color of background", cat: "Client Requirements" },
+      { text: "Naming", cat: "Technical Requirements" },
+      { text: "Lighting options", cat: "References" },
+      { text: "Style preference", cat: "Client Requirements" },
+      { text: "Orientation / Scale", cat: "Client Requirements" },
+      { text: "Additional services", cat: "Technical Requirements" },
+      { text: "File Delivery", cat: "Technical Requirements" },
     ],
     defaults: {
       "Type of project": "Residential",
@@ -1326,32 +1326,32 @@ const SOW_TEMPLATES = {
   },
   "Aerial": {
     items: [
-      { text: "Project type", cat: "Вимоги клієнта" },
-      { text: "Purpose", cat: "Технічні вимоги" },
-      { text: "Number of images", cat: "Технічні вимоги" },
-      { text: "Aspect ratio", cat: "Технічні вимоги" },
-      { text: "Resolution", cat: "Технічні вимоги" },
-      { text: "DPI", cat: "Технічні вимоги" },
-      { text: "File format", cat: "Технічні вимоги" },
-      { text: "Site photos", cat: "Креслення" },
-      { text: "Project location/coordinates", cat: "Вимоги клієнта" },
-      { text: "Neighboring buildings", cat: "Референси" },
-      { text: "Camera angle preferences", cat: "Вимоги клієнта" },
-      { text: "Camera angles and height", cat: "Вимоги клієнта" },
-      { text: "Drawings", cat: "Креслення" },
-      { text: "Model", cat: "Меблі та предмети" },
-      { text: "Landscape plan", cat: "Креслення" },
-      { text: "Materials", cat: "Матеріали та оздоблення" },
-      { text: "Unique elements", cat: "Вимоги клієнта" },
-      { text: "Season", cat: "Референси" },
-      { text: "Time", cat: "Референси" },
-      { text: "Sky", cat: "Референси" },
-      { text: "Inside house", cat: "Вимоги клієнта" },
-      { text: "Glass", cat: "Вимоги клієнта" },
-      { text: "Artificial lighting", cat: "Референси" },
-      { text: "Cars", cat: "Вимоги клієнта" },
-      { text: "People", cat: "Вимоги клієнта" },
-      { text: "Additional elements", cat: "Вимоги клієнта" },
+      { text: "Project type", cat: "Client Requirements" },
+      { text: "Purpose", cat: "Technical Requirements" },
+      { text: "Number of images", cat: "Technical Requirements" },
+      { text: "Aspect ratio", cat: "Technical Requirements" },
+      { text: "Resolution", cat: "Technical Requirements" },
+      { text: "DPI", cat: "Technical Requirements" },
+      { text: "File format", cat: "Technical Requirements" },
+      { text: "Site photos", cat: "Drawings" },
+      { text: "Project location/coordinates", cat: "Client Requirements" },
+      { text: "Neighboring buildings", cat: "References" },
+      { text: "Camera angle preferences", cat: "Client Requirements" },
+      { text: "Camera angles and height", cat: "Client Requirements" },
+      { text: "Drawings", cat: "Drawings" },
+      { text: "Model", cat: "Furniture & Objects" },
+      { text: "Landscape plan", cat: "Drawings" },
+      { text: "Materials", cat: "Materials & Finishes" },
+      { text: "Unique elements", cat: "Client Requirements" },
+      { text: "Season", cat: "References" },
+      { text: "Time", cat: "References" },
+      { text: "Sky", cat: "References" },
+      { text: "Inside house", cat: "Client Requirements" },
+      { text: "Glass", cat: "Client Requirements" },
+      { text: "Artificial lighting", cat: "References" },
+      { text: "Cars", cat: "Client Requirements" },
+      { text: "People", cat: "Client Requirements" },
+      { text: "Additional elements", cat: "Client Requirements" },
     ],
     defaults: {
       "Project type": "Detailed project visualization",
@@ -1378,46 +1378,46 @@ const SOW_TEMPLATES = {
   },
   "Design Interior": {
     items: [
-      { text: "Style", cat: "Вимоги клієнта" },
-      { text: "References", cat: "Референси" },
-      { text: "Furniture Placement", cat: "Меблі та предмети" },
-      { text: "Furniture Details", cat: "Меблі та предмети" },
-      { text: "3D Model", cat: "Меблі та предмети" },
-      { text: "Materials", cat: "Матеріали та оздоблення" },
-      { text: "Decor", cat: "Меблі та предмети" },
-      { text: "Colors", cat: "Матеріали та оздоблення" },
-      { text: "Functions", cat: "Вимоги клієнта" },
-      { text: "Detailing", cat: "Вимоги клієнта" },
-      { text: "Income", cat: "Вимоги клієнта" },
-      { text: "Target user", cat: "Вимоги клієнта" },
-      { text: "Architectural highlight", cat: "Вимоги клієнта" },
-      { text: "Key areas", cat: "Вимоги клієнта" },
-      { text: "Custom elements", cat: "Вимоги клієнта" },
-      { text: "Must-have", cat: "Вимоги клієнта" },
-      { text: "Plants", cat: "Вимоги клієнта" },
-      { text: "Cultural influences", cat: "Вимоги клієнта" },
-      { text: "Things to avoid", cat: "Вимоги клієнта" },
-      { text: "Type of buildings", cat: "Вимоги клієнта" },
-      { text: "Type of project", cat: "Вимоги клієнта" },
-      { text: "Required rooms", cat: "Вимоги клієнта" },
-      { text: "Type renderings", cat: "Технічні вимоги" },
-      { text: "Purpose", cat: "Технічні вимоги" },
-      { text: "Number", cat: "Технічні вимоги" },
-      { text: "Aspect ratio", cat: "Технічні вимоги" },
-      { text: "Resolution", cat: "Технічні вимоги" },
-      { text: "DPI", cat: "Технічні вимоги" },
-      { text: "Format", cat: "Технічні вимоги" },
-      { text: "Naming", cat: "Технічні вимоги" },
-      { text: "Render elements", cat: "Технічні вимоги" },
-      { text: "Additional services", cat: "Технічні вимоги" },
-      { text: "Delivery", cat: "Технічні вимоги" },
-      { text: "Camera preferences", cat: "Вимоги клієнта" },
-      { text: "Drawings", cat: "Креслення" },
-      { text: "Model", cat: "Меблі та предмети" },
-      { text: "Views from Window", cat: "Референси" },
-      { text: "Type of view", cat: "Референси" },
-      { text: "Geolocation", cat: "Референси" },
-      { text: "People", cat: "Вимоги клієнта" },
+      { text: "Style", cat: "Client Requirements" },
+      { text: "References", cat: "References" },
+      { text: "Furniture Placement", cat: "Furniture & Objects" },
+      { text: "Furniture Details", cat: "Furniture & Objects" },
+      { text: "3D Model", cat: "Furniture & Objects" },
+      { text: "Materials", cat: "Materials & Finishes" },
+      { text: "Decor", cat: "Furniture & Objects" },
+      { text: "Colors", cat: "Materials & Finishes" },
+      { text: "Functions", cat: "Client Requirements" },
+      { text: "Detailing", cat: "Client Requirements" },
+      { text: "Income", cat: "Client Requirements" },
+      { text: "Target user", cat: "Client Requirements" },
+      { text: "Architectural highlight", cat: "Client Requirements" },
+      { text: "Key areas", cat: "Client Requirements" },
+      { text: "Custom elements", cat: "Client Requirements" },
+      { text: "Must-have", cat: "Client Requirements" },
+      { text: "Plants", cat: "Client Requirements" },
+      { text: "Cultural influences", cat: "Client Requirements" },
+      { text: "Things to avoid", cat: "Client Requirements" },
+      { text: "Type of buildings", cat: "Client Requirements" },
+      { text: "Type of project", cat: "Client Requirements" },
+      { text: "Required rooms", cat: "Client Requirements" },
+      { text: "Type renderings", cat: "Technical Requirements" },
+      { text: "Purpose", cat: "Technical Requirements" },
+      { text: "Number", cat: "Technical Requirements" },
+      { text: "Aspect ratio", cat: "Technical Requirements" },
+      { text: "Resolution", cat: "Technical Requirements" },
+      { text: "DPI", cat: "Technical Requirements" },
+      { text: "Format", cat: "Technical Requirements" },
+      { text: "Naming", cat: "Technical Requirements" },
+      { text: "Render elements", cat: "Technical Requirements" },
+      { text: "Additional services", cat: "Technical Requirements" },
+      { text: "Delivery", cat: "Technical Requirements" },
+      { text: "Camera preferences", cat: "Client Requirements" },
+      { text: "Drawings", cat: "Drawings" },
+      { text: "Model", cat: "Furniture & Objects" },
+      { text: "Views from Window", cat: "References" },
+      { text: "Type of view", cat: "References" },
+      { text: "Geolocation", cat: "References" },
+      { text: "People", cat: "Client Requirements" },
     ],
     defaults: {
       "Style": "Modern",
@@ -1450,39 +1450,39 @@ const SOW_TEMPLATES = {
   },
   "Floor Rendering": {
     items: [
-      { text: "Product type", cat: "Специфікація поверхні" },
-      { text: "Scene type", cat: "Сцена" },
-      { text: "Additional services", cat: "Технічні вимоги" },
-      { text: "Purpose", cat: "Технічні вимоги" },
-      { text: "Workflow", cat: "Сцена" },
-      { text: "Camera view", cat: "Сцена" },
-      { text: "Geolocation", cat: "Сцена" },
-      { text: "View from window", cat: "Сцена" },
-      { text: "Background view", cat: "Сцена" },
-      { text: "Furniture layout", cat: "Сцена" },
-      { text: "Props", cat: "Сцена" },
-      { text: "Talents", cat: "Сцена" },
-      { text: "Surface type", cat: "Специфікація поверхні" },
-      { text: "Floor pattern", cat: "Специфікація поверхні" },
-      { text: "Tile size length", cat: "Специфікація поверхні" },
-      { text: "Tile size width", cat: "Специфікація поверхні" },
-      { text: "Seam", cat: "Специфікація поверхні" },
-      { text: "Grout depth", cat: "Специфікація поверхні" },
-      { text: "Grout color", cat: "Специфікація поверхні" },
-      { text: "Resolution", cat: "Технічні вимоги" },
-      { text: "DPI", cat: "Технічні вимоги" },
-      { text: "File format", cat: "Технічні вимоги" },
-      { text: "Size", cat: "Технічні вимоги" },
-      { text: "Crop", cat: "Технічні вимоги" },
-      { text: "Naming", cat: "Технічні вимоги" },
-      { text: "Delivery", cat: "Технічні вимоги" },
-      { text: "Render elements", cat: "Технічні вимоги" },
-      { text: "Daytime", cat: "Сцена" },
-      { text: "Artificial", cat: "Сцена" },
-      { text: "Shadows", cat: "Сцена" },
-      { text: "Reference purpose", cat: "Сцена" },
-      { text: "Decor", cat: "Сцена" },
-      { text: "Colors", cat: "Сцена" },
+      { text: "Product type", cat: "Surface Specification" },
+      { text: "Scene type", cat: "Scene" },
+      { text: "Additional services", cat: "Technical Requirements" },
+      { text: "Purpose", cat: "Technical Requirements" },
+      { text: "Workflow", cat: "Scene" },
+      { text: "Camera view", cat: "Scene" },
+      { text: "Geolocation", cat: "Scene" },
+      { text: "View from window", cat: "Scene" },
+      { text: "Background view", cat: "Scene" },
+      { text: "Furniture layout", cat: "Scene" },
+      { text: "Props", cat: "Scene" },
+      { text: "Talents", cat: "Scene" },
+      { text: "Surface type", cat: "Surface Specification" },
+      { text: "Floor pattern", cat: "Surface Specification" },
+      { text: "Tile size length", cat: "Surface Specification" },
+      { text: "Tile size width", cat: "Surface Specification" },
+      { text: "Seam", cat: "Surface Specification" },
+      { text: "Grout depth", cat: "Surface Specification" },
+      { text: "Grout color", cat: "Surface Specification" },
+      { text: "Resolution", cat: "Technical Requirements" },
+      { text: "DPI", cat: "Technical Requirements" },
+      { text: "File format", cat: "Technical Requirements" },
+      { text: "Size", cat: "Technical Requirements" },
+      { text: "Crop", cat: "Technical Requirements" },
+      { text: "Naming", cat: "Technical Requirements" },
+      { text: "Delivery", cat: "Technical Requirements" },
+      { text: "Render elements", cat: "Technical Requirements" },
+      { text: "Daytime", cat: "Scene" },
+      { text: "Artificial", cat: "Scene" },
+      { text: "Shadows", cat: "Scene" },
+      { text: "Reference purpose", cat: "Scene" },
+      { text: "Decor", cat: "Scene" },
+      { text: "Colors", cat: "Scene" },
     ],
     defaults: {
       "Product type": "Floor",
@@ -1522,9 +1522,9 @@ const SOW_TEMPLATES = {
   },
   "Mattress Rendering": {
     items: [
-      { text: "Type of Work", cat: "Продукт" },
-      { text: "Model", cat: "Продукт" },
-      { text: "Purpose", cat: "Технічні вимоги" },
+      { text: "Type of Work", cat: "Product" },
+      { text: "Model", cat: "Product" },
+      { text: "Purpose", cat: "Technical Requirements" },
       { text: "Silo — Views", cat: "Silo" },
       { text: "Silo — Background", cat: "Silo" },
       { text: "Silo — Shadow", cat: "Silo" },
@@ -1536,27 +1536,27 @@ const SOW_TEMPLATES = {
       { text: "Lifestyle — Talents", cat: "Lifestyle" },
       { text: "People", cat: "Lifestyle" },
       { text: "Pets", cat: "Lifestyle" },
-      { text: "Resolution", cat: "Технічні вимоги" },
-      { text: "DPI", cat: "Технічні вимоги" },
-      { text: "Format", cat: "Технічні вимоги" },
-      { text: "Size", cat: "Технічні вимоги" },
-      { text: "Aspect", cat: "Технічні вимоги" },
-      { text: "Crop", cat: "Технічні вимоги" },
-      { text: "Naming", cat: "Технічні вимоги" },
-      { text: "Delivery", cat: "Технічні вимоги" },
-      { text: "Render elements", cat: "Технічні вимоги" },
+      { text: "Resolution", cat: "Technical Requirements" },
+      { text: "DPI", cat: "Technical Requirements" },
+      { text: "Format", cat: "Technical Requirements" },
+      { text: "Size", cat: "Technical Requirements" },
+      { text: "Aspect", cat: "Technical Requirements" },
+      { text: "Crop", cat: "Technical Requirements" },
+      { text: "Naming", cat: "Technical Requirements" },
+      { text: "Delivery", cat: "Technical Requirements" },
+      { text: "Render elements", cat: "Technical Requirements" },
       { text: "Daytime", cat: "Lifestyle" },
       { text: "Artificial", cat: "Lifestyle" },
       { text: "Shadows", cat: "Lifestyle" },
       { text: "Reference", cat: "Lifestyle" },
-      { text: "Bedding", cat: "Матеріали та текстури" },
+      { text: "Bedding", cat: "Materials & Textures" },
       { text: "Silo image", cat: "Silo" },
-      { text: "Materials", cat: "Матеріали та текстури" },
-      { text: "Colors", cat: "Матеріали та текстури" },
-      { text: "Photos of Product", cat: "Продукт" },
-      { text: "Mattress Components", cat: "Продукт" },
-      { text: "Texture for Mattress", cat: "Матеріали та текстури" },
-      { text: "Mattress Build", cat: "Продукт" },
+      { text: "Materials", cat: "Materials & Textures" },
+      { text: "Colors", cat: "Materials & Textures" },
+      { text: "Photos of Product", cat: "Product" },
+      { text: "Mattress Components", cat: "Product" },
+      { text: "Texture for Mattress", cat: "Materials & Textures" },
+      { text: "Mattress Build", cat: "Product" },
     ],
     defaults: {
       "Type of Work": "Silo + Lifestyle + Modeling",
@@ -1594,16 +1594,16 @@ const SOW_TEMPLATES = {
   },
   "Rugs Rendering": {
     items: [
-      { text: "Purpose", cat: "Технічні вимоги" },
-      { text: "Additional services", cat: "Ракурси та подача" },
-      { text: "Resolution", cat: "Технічні вимоги" },
-      { text: "Output Format", cat: "Технічні вимоги" },
-      { text: "Aspect ratio", cat: "Технічні вимоги" },
-      { text: "Crop", cat: "Технічні вимоги" },
-      { text: "DPI", cat: "Технічні вимоги" },
-      { text: "Decor", cat: "Ракурси та подача" },
-      { text: "Naming", cat: "Технічні вимоги" },
-      { text: "Delivery", cat: "Технічні вимоги" },
+      { text: "Purpose", cat: "Technical Requirements" },
+      { text: "Additional services", cat: "Angles & Delivery" },
+      { text: "Resolution", cat: "Technical Requirements" },
+      { text: "Output Format", cat: "Technical Requirements" },
+      { text: "Aspect ratio", cat: "Technical Requirements" },
+      { text: "Crop", cat: "Technical Requirements" },
+      { text: "DPI", cat: "Technical Requirements" },
+      { text: "Decor", cat: "Angles & Delivery" },
+      { text: "Naming", cat: "Technical Requirements" },
+      { text: "Delivery", cat: "Technical Requirements" },
     ],
     defaults: {
       "Purpose": "Website",
@@ -1620,25 +1620,25 @@ const SOW_TEMPLATES = {
   },
   "Real Estate": {
     items: [
-      { text: "Property type", cat: "Вимоги клієнта" },
-      { text: "Market segment", cat: "Вимоги клієнта" },
-      { text: "Google maps location", cat: "Референси" },
-      { text: "Layout/Plan", cat: "Креслення" },
-      { text: "Style direction", cat: "Вимоги клієнта" },
-      { text: "Furniture/materials", cat: "Меблі та предмети" },
-      { text: "Additional resources", cat: "Меблі та предмети" },
-      { text: "Spaces", cat: "Вимоги клієнта" },
-      { text: "Images per space", cat: "Технічні вимоги" },
-      { text: "Camera", cat: "Вимоги клієнта" },
-      { text: "Resolution", cat: "Технічні вимоги" },
-      { text: "DPI", cat: "Технічні вимоги" },
-      { text: "Format", cat: "Технічні вимоги" },
-      { text: "Aspect ratio", cat: "Технічні вимоги" },
-      { text: "Additional services", cat: "Технічні вимоги" },
-      { text: "Delivery", cat: "Технічні вимоги" },
-      { text: "Lighting", cat: "Референси" },
-      { text: "Artificial", cat: "Референси" },
-      { text: "Shadows", cat: "Референси" },
+      { text: "Property type", cat: "Client Requirements" },
+      { text: "Market segment", cat: "Client Requirements" },
+      { text: "Google maps location", cat: "References" },
+      { text: "Layout/Plan", cat: "Drawings" },
+      { text: "Style direction", cat: "Client Requirements" },
+      { text: "Furniture/materials", cat: "Furniture & Objects" },
+      { text: "Additional resources", cat: "Furniture & Objects" },
+      { text: "Spaces", cat: "Client Requirements" },
+      { text: "Images per space", cat: "Technical Requirements" },
+      { text: "Camera", cat: "Client Requirements" },
+      { text: "Resolution", cat: "Technical Requirements" },
+      { text: "DPI", cat: "Technical Requirements" },
+      { text: "Format", cat: "Technical Requirements" },
+      { text: "Aspect ratio", cat: "Technical Requirements" },
+      { text: "Additional services", cat: "Technical Requirements" },
+      { text: "Delivery", cat: "Technical Requirements" },
+      { text: "Lighting", cat: "References" },
+      { text: "Artificial", cat: "References" },
+      { text: "Shadows", cat: "References" },
     ],
     defaults: {
       "Google maps location": "Location unavailable – use generic",
@@ -1662,60 +1662,60 @@ const SOW_TEMPLATES = {
 };
 
 const TYPE_DESCRIPTIONS = {
-  "Residential Interior": "Фотореалістична візуалізація житлових інтер'єрів на основі технічних DWG-креслень. Квартири, приватні будинки, апартаменти. Потрібні плани, меблі та специфікація матеріалів.",
-  "Commercial Interior": "Візуалізація комерційних просторів: офіси, ресторани, готелі, шоуруми, торгові зали. Потрібні DWG-плани, бренд-гайдлайни, логотип та специфікація обладнання.",
-  "Exterior": "Зовнішній рендер будівлі за фасадними кресленнями з оточенням, ландшафтом і небом. Опційно: аеріал-ракурс з дрону. Потрібні плани, фасади та розрізи.",
-  "Lifestyle": "Рекламна продуктова сцена в інтер'єрі або на вулиці. Три workflow на вибір: Our Vision (студія творить), Your Vision (за вашим референсом), Template (готова сцена з бібліотеки).",
-  "Silo": "Чисті технічні знімки продукту на нейтральному фоні (білий / прозорий / чорний). Стандарт для e-commerce, каталогів та маркетплейсів.",
-  "Masterplan": "Топ-вид на генплан із будівлями, ландшафтом, дорогами та інфраструктурою. Для девелоперських проектів, містобудування та презентацій забудовника.",
-  "Product Rendering": "Фотореалістичні знімки меблів, декору або обладнання в студії або підібраній сцені. Для каталогів, сайтів і соцмереж.",
-  "3D Modeling": "Виготовлення 3D-моделі продукту за кресленнями або фото без рендерингу. Вихід: .max / .fbx / .obj. Включає підготовку для AR (GLB/USDZ).",
-  "Floorplan": "Архітектурний план зверху у 3D або схематичному стилі. Для продажів нерухомості, сайтів девелопера та презентацій.",
-  "Aerial": "Аеріал-вид з дрону: вибір висоти (30–100м), кута, сезону та атмосфери. Окремий проект без рендеру фасаду. Потрібні координати або адреса об'єкту.",
-  "Design Interior": "Концептуальна візуалізація без технічних креслень — від стильового напрямку. Студія підбирає меблі та матеріали самостійно. Підходить для просування студії або конкурсних проектів.",
-  "Floor Rendering": "Продуктові знімки підлогової або настінної плитки, паркету, ламінату: silo на білому + lifestyle сцена. Для каталогів і сайтів виробників матеріалів.",
-  "Mattress Rendering": "Продуктові знімки матраців: silo + lifestyle зі спальнею. Включає роботу з постільною білизною, крупними планами фактури та конструктивним розрізом.",
-  "Rugs Rendering": "Продуктові знімки килимів: вид зверху з розмірами, крупний план ворсу, lifestyle у вітальні або спальні. Для каталогів і сайтів виробників.",
-  "Real Estate": "Інтер'єрна візуалізація для продажу нерухомості зі спрощеним брифом. Починається від 2D-ескізу без деталізованих DWG. Студія підбирає стиль і меблі самостійно відповідно до ринкового сегменту.",
+  "Residential Interior": "Photorealistic visualization of residential interiors based on technical DWG drawings. Apartments, private homes. Requires floor plans, furniture and material specs.",
+  "Commercial Interior": "Visualization of commercial spaces: offices, restaurants, hotels, showrooms, retail. Requires DWG plans, brand guidelines, logo and equipment specs.",
+  "Exterior": "Building exterior render from facade drawings with surroundings, landscape and sky. Optional: aerial drone angle. Requires plans, facades and sections.",
+  "Lifestyle": "Advertising product scene in interior or outdoors. Three workflows: Our Vision (studio creates), Your Vision (your reference), Template (library scene).",
+  "Silo": "Clean product shots on neutral background (white / transparent / black). Standard for e-commerce, catalogs and marketplaces.",
+  "Masterplan": "Top-view of masterplan with buildings, landscape, roads and infrastructure. For development projects, urban planning and developer presentations.",
+  "Product Rendering": "Photorealistic shots of furniture, decor or equipment in studio or curated scene. For catalogs, websites and social media.",
+  "3D Modeling": "3D model creation from drawings or photos, no rendering. Output: .max / .fbx / .obj. Includes AR preparation (GLB/USDZ).",
+  "Floorplan": "Architectural floor plan from above in 3D or schematic style. For real estate sales, developer websites and presentations.",
+  "Aerial": "Aerial drone view: choice of height (30–100m), angle, season and atmosphere. Separate project without facade render. Requires coordinates or address.",
+  "Design Interior": "Conceptual visualization without technical drawings — from a style direction. Studio selects furniture and materials independently. For portfolio or competition projects.",
+  "Floor Rendering": "Product shots of floor or wall tiles, parquet, laminate: silo on white + lifestyle scene. For catalogs and material manufacturer websites.",
+  "Mattress Rendering": "Product shots of mattresses: silo + lifestyle with bedroom. Includes bedding, texture close-ups and structural cross-section.",
+  "Rugs Rendering": "Product shots of rugs: top view with dimensions, pile close-up, lifestyle in living room or bedroom. For catalogs and manufacturer websites.",
+  "Real Estate": "Interior visualization for real estate sales with a simplified brief. Starts from a 2D sketch without detailed DWG. Studio selects style and furniture independently based on market segment.",
 };
 
 const CAT_COLOR = {
   // Interior / Exterior / Aerial / Real Estate / Design / Floorplan / Masterplan
-  "Референси": "#27ae60",
-  "Матеріали та оздоблення": "#8e44ad",
-  "Меблі та предмети": "#2980b9",
-  "Креслення": "#e67e22",
-  "Технічні вимоги": "#16a085",
-  "Вимоги клієнта": "#c0392b",
+  "References": "#27ae60",
+  "Materials & Finishes": "#8e44ad",
+  "Furniture & Objects": "#2980b9",
+  "Drawings": "#e67e22",
+  "Technical Requirements": "#16a085",
+  "Client Requirements": "#c0392b",
   // Silo
-  "Продукт": "#2980b9",
-  "Ракурси та подача": "#e67e22",
+  "Product": "#2980b9",
+  "Angles & Delivery": "#e67e22",
   // Lifestyle
-  "Матеріали та текстури": "#8e44ad",
-  "Сцена": "#27ae60",
+  "Materials & Textures": "#8e44ad",
+  "Scene": "#27ae60",
   // Floor Rendering
-  "Специфікація поверхні": "#d35400",
+  "Surface Specification": "#d35400",
   // Mattress Rendering
   "Silo": "#2c3e50",
   "Lifestyle": "#c0392b",
   // 3D Modeling
-  "Параметри моделінгу": "#16a085",
-  "AR-специфікація": "#3498db",
-  "Референс продукту": "#7f8c8d",
+  "Modeling Parameters": "#16a085",
+  "AR Specification": "#3498db",
+  "Product Reference": "#7f8c8d",
 };
 
-const PRODUCTION_STAGES = ["Моделінг", "Текстуринг", "Світло", "Камери", "Пост-продакшн", "Видача"];
+const PRODUCTION_STAGES = ["Modeling", "Texturing", "Lighting", "Cameras", "Post-production", "Delivery"];
 const STAGE_COLOR = {
-  "Моделінг": "#e67e22", "Текстуринг": "#8e44ad", "Світло": "#f39c12",
-  "Камери": "#2980b9",   "Пост-продакшн": "#16a085", "Видача": "#7f8c8d",
+  "Modeling": "#e67e22", "Texturing": "#8e44ad", "Lighting": "#f39c12",
+  "Cameras": "#2980b9", "Post-production": "#16a085", "Delivery": "#7f8c8d",
 };
 const STAGE_HINT = {
-  "Моделінг": "геометрія, планування, розміри",
-  "Текстуринг": "матеріали, бренди, RAL/артикули",
-  "Світло": "час доби, сезон, джерела",
-  "Камери": "ракурси, висота ока, орієнтири",
-  "Пост-продакшн": "стиль обробки, люди в кадрі",
-  "Видача": "формат, розширення, дедлайн",
+  "Modeling": "geometry, layout, dimensions",
+  "Texturing": "materials, brands, RAL/SKU",
+  "Lighting": "time of day, season, sources",
+  "Cameras": "angles, eye height, landmarks",
+  "Post-production": "processing style, people in frame",
+  "Delivery": "format, resolution, deadline",
 };
 
 // ─── TZ Review ────────────────────────────────────────────────────────────────
@@ -1729,7 +1729,7 @@ function ImageLightbox({ imgRef, itemText, onClose }) {
       <div onClick={e => e.stopPropagation()}
         style={{ width: "min(92vw,960px)", display: "flex", alignItems: "center", gap: 10, marginBottom: 8 }}>
         <div style={{ flex: 1 }}>
-          <div style={{ fontSize: 10, fontFamily: "monospace", color: "#888", marginBottom: 2 }}>{imgRef.fileLabel} · стор. {imgRef.pageNum}</div>
+          <div style={{ fontSize: 10, fontFamily: "monospace", color: "#888", marginBottom: 2 }}>{imgRef.fileLabel} · p. {imgRef.pageNum}</div>
           <div style={{ fontSize: 11, color: "#ccc", fontFamily: "monospace" }}>{imgRef.filename}</div>
         </div>
         <button onClick={onClose} style={{ background: "none", border: "none", color: "#666", fontSize: 22, cursor: "pointer", lineHeight: 1 }}>✕</button>
@@ -1744,7 +1744,7 @@ function ImageLightbox({ imgRef, itemText, onClose }) {
       {itemText && (
         <div onClick={e => e.stopPropagation()}
           style={{ width: "min(92vw,960px)", marginTop: 8, padding: "8px 12px", background: "rgba(255,255,255,0.06)", borderRadius: 6 }}>
-          <span style={{ fontSize: 9, fontFamily: "monospace", color: "#555", marginRight: 8 }}>ВИМОГА:</span>
+          <span style={{ fontSize: 9, fontFamily: "monospace", color: "#555", marginRight: 8 }}>ITEM:</span>
           <span style={{ fontSize: 11, color: "#bbb" }}>{itemText}</span>
         </div>
       )}
@@ -1770,7 +1770,7 @@ function DocViewer({ source, initialPage, itemText, onClose }) {
         style={{ width: "min(94vw,1040px)", display: "flex", alignItems: "center", gap: 10, marginBottom: 8 }}>
         <div style={{ flex: 1 }}>
           <div style={{ fontSize: 10, fontFamily: "monospace", color: "#888", marginBottom: 2 }}>{source.name || source.filename}</div>
-          <div style={{ fontSize: 9, fontFamily: "monospace", color: "#555" }}>{total} сторін{total === 1 ? "ка" : total < 5 ? "ки" : "ок"}</div>
+          <div style={{ fontSize: 9, fontFamily: "monospace", color: "#555" }}>{total} page{total === 1 ? "" : "s"}</div>
         </div>
         <button onClick={onClose} style={{ background: "none", border: "none", color: "#666", fontSize: 22, cursor: "pointer", lineHeight: 1 }}>✕</button>
       </div>
@@ -1779,8 +1779,8 @@ function DocViewer({ source, initialPage, itemText, onClose }) {
       <div onClick={e => e.stopPropagation()}
         style={{ width: "min(94vw,1040px)", maxHeight: "72vh", overflow: "hidden", borderRadius: 8, background: "#111", display: "flex", alignItems: "center", justifyContent: "center", position: "relative" }}>
         {b64
-          ? <img src={b64} alt={`стор. ${page}`} style={{ maxWidth: "100%", maxHeight: "72vh", objectFit: "contain", display: "block" }} />
-          : <div style={{ color: "#555", fontFamily: "monospace", fontSize: 11 }}>Зображення недоступне</div>}
+          ? <img src={b64} alt={`p. ${page}`} style={{ maxWidth: "100%", maxHeight: "72vh", objectFit: "contain", display: "block" }} />
+          : <div style={{ color: "#555", fontFamily: "monospace", fontSize: 11 }}>Image unavailable</div>}
         {/* Prev / Next overlays */}
         {page > 1 && (
           <button onClick={() => setPage(p => p - 1)}
@@ -1820,7 +1820,7 @@ function DocViewer({ source, initialPage, itemText, onClose }) {
       {itemText && (
         <div onClick={e => e.stopPropagation()}
           style={{ width: "min(94vw,1040px)", marginTop: 6, padding: "8px 12px", background: "rgba(255,255,255,0.06)", borderRadius: 6 }}>
-          <span style={{ fontSize: 9, fontFamily: "monospace", color: "#555", marginRight: 8 }}>ВИМОГА:</span>
+          <span style={{ fontSize: 9, fontFamily: "monospace", color: "#555", marginRight: 8 }}>ITEM:</span>
           <span style={{ fontSize: 11, color: "#bbb" }}>{itemText}</span>
         </div>
       )}
@@ -1850,8 +1850,8 @@ function TzItem({ item, onEdit, onRemove, onOpenRef, onOpenDoc }) {
         }
         <div style={{ display: "flex", gap: 6, marginTop: 4, flexWrap: "wrap", alignItems: "center" }}>
           {item.source && <span style={{ fontSize: 9, color: "#bbb", fontFamily: "monospace" }}>{item.source}</span>}
-          {ref && <span onClick={() => onOpenRef(ref, item.text)} style={{ fontSize: 9, color: "#3498db", fontFamily: "monospace", cursor: "pointer", textDecoration: "underline dotted" }} title="Відкрити джерело">↗ {ref.fileLabel}{ref.pageNum > 1 ? ` стор.${ref.pageNum}` : ""}</span>}
-          {!ref && item.imgRefLabel && <span onClick={() => onOpenDoc?.(item.imgRefLabel, item.text)} style={{ fontSize: 9, color: "#e67e22", fontFamily: "monospace", cursor: onOpenDoc ? "pointer" : "default", textDecoration: onOpenDoc ? "underline dotted" : "none" }} title={`Відкрити: ${item.imgRefLabel}`}>⚠ {item.imgRefLabel}</span>}
+          {ref && <span onClick={() => onOpenRef(ref, item.text)} style={{ fontSize: 9, color: "#3498db", fontFamily: "monospace", cursor: "pointer", textDecoration: "underline dotted" }} title="Open source">↗ {ref.fileLabel}{ref.pageNum > 1 ? ` p.${ref.pageNum}` : ""}</span>}
+          {!ref && item.imgRefLabel && <span onClick={() => onOpenDoc?.(item.imgRefLabel, item.text)} style={{ fontSize: 9, color: "#e67e22", fontFamily: "monospace", cursor: onOpenDoc ? "pointer" : "default", textDecoration: onOpenDoc ? "underline dotted" : "none" }} title={`Open: ${item.imgRefLabel}`}>⚠ {item.imgRefLabel}</span>}
           {(item.links || []).map((lk, li) => (
             <a key={li} href={lk.url} target="_blank" rel="noreferrer"
               title={lk.url}
@@ -1863,28 +1863,28 @@ function TzItem({ item, onEdit, onRemove, onOpenRef, onOpenDoc }) {
         </div>
       </div>
       {ref?.preview && (
-        <div onClick={() => onOpenRef(ref, item.text)} title={`${ref.fileLabel} · стор. ${ref.pageNum}`}
+        <div onClick={() => onOpenRef(ref, item.text)} title={`${ref.fileLabel} · p. ${ref.pageNum}`}
           style={{ width: 56, height: 42, flexShrink: 0, cursor: "pointer", borderRadius: 3, overflow: "hidden", border: "1px solid #e0ddd8", position: "relative" }}>
           <img src={ref.preview} style={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }} />
           <div style={{ position: "absolute", inset: 0, background: "rgba(0,0,0,0)", transition: "background 0.15s" }}
             onMouseEnter={e => e.currentTarget.style.background = "rgba(0,0,0,0.25)"}
             onMouseLeave={e => e.currentTarget.style.background = "rgba(0,0,0,0)"}>
             <div style={{ position: "absolute", bottom: 2, right: 2, fontSize: 7, fontFamily: "monospace", color: "#fff", background: "rgba(0,0,0,0.5)", padding: "0 2px", borderRadius: 1 }}>
-              с.{ref.pageNum}
+              p.{ref.pageNum}
             </div>
           </div>
         </div>
       )}
-      <button onClick={() => onRemove(item.id)} style={{ background: "none", border: "none", color: "#ddd", cursor: "pointer", fontSize: 14, flexShrink: 0, lineHeight: 1, padding: "2px 4px" }} title="Видалити">×</button>
+      <button onClick={() => onRemove(item.id)} style={{ background: "none", border: "none", color: "#ddd", cursor: "pointer", fontSize: 14, flexShrink: 0, lineHeight: 1, padding: "2px 4px" }} title="Delete">×</button>
     </div>
   );
 }
 
 const SOURCE_TYPE_LABELS = {
-  furniture: "Меблі", material: "Матеріали", lighting: "Освітлення",
-  style_ref: "Стиль", time_of_day: "Час доби", weather: "Погода/сезон",
-  render_quality: "Якість рендеру", camera: "Ракурс", dimensions: "Розміри",
-  logo: "Логотип", comment: "Коментар", other: "Інше",
+  furniture: "Furniture", material: "Materials", lighting: "Lighting",
+  style_ref: "Style", time_of_day: "Time of day", weather: "Weather / Season",
+  render_quality: "Render quality", camera: "Camera angle", dimensions: "Dimensions",
+  logo: "Logo", comment: "Comment", other: "Other",
 };
 const SOURCE_TYPE_COLOR = {
   furniture: "#2980b9", material: "#8e44ad", lighting: "#f39c12",
@@ -1895,7 +1895,7 @@ const SOURCE_TYPE_COLOR = {
 const SOURCE_FILE_ICO = { pdf: "📄", dwg: "📐", dxf: "📐", excel: "📊", text: "📝", image: "🖼️" };
 
 function TzReviewStep({ projectType, rooms, tzByRoom, sowMissing, sowUnclear, deliverySpec, sowCoverage, buildingCoverage, clientComments, annotation, conflicts, roadmap, sources, files, sourceTags, onSourceTag, onEdit, onRemove, onBack, clientTranslation, buildingClientTranslation, onBuildClientTranslation }) {
-  const allRooms = rooms?.length ? ["Загальне", ...rooms.filter(r => r !== "Загальне")] : ["Загальне"];
+  const allRooms = rooms?.length ? ["General", ...rooms.filter(r => r !== "General")] : ["General"];
   const [viewMode, setViewMode] = useState("rooms"); // kept for legacy code below
   const [reportMode, setReportMode] = useState("pm");
   const [activeRoom, setActiveRoom] = useState(allRooms[0]);
@@ -1922,15 +1922,15 @@ function TzReviewStep({ projectType, rooms, tzByRoom, sowMissing, sowUnclear, de
     setDocViewer({ source: file, pageNum: pageNum || 1, itemText });
   };
 
-  // Open DocViewer by imgRefLabel (e.g. "CUTSHEET стор.4") — fuzzy match against filenames
+  // Open DocViewer by imgRefLabel (e.g. "CUTSHEET p.4") — fuzzy match against filenames
   const openDocByLabel = (label, itemText) => {
     if (!label || !(files || []).length) return;
     const norm = s => s.replace(/\[.*?\]/g, '').replace(/\s+/g, ' ').trim().toLowerCase();
     const raw = norm(label);
-    // Extract page number from "стор.N" or "стор. N"
-    const pageMatch = raw.match(/стор[.\s]+(\d+)/);
+    // Extract page number from "p.N" or "p. N"
+    const pageMatch = raw.match(/p[.\s]+(\d+)/);
     const pageNum = pageMatch ? parseInt(pageMatch[1]) : 1;
-    const baseName = raw.replace(/стор[.\s]+\d+/g, '').replace(/\s+\d+$/, '').trim();
+    const baseName = raw.replace(/p[.\s]+\d+/g, '').replace(/\s+\d+$/, '').trim();
     // Find file whose filename (without ext) contains baseName or vice versa
     const found = (files || []).find(f => {
       const fn = f.filename.replace(/\.[^.]+$/, '').toLowerCase();
@@ -1940,14 +1940,12 @@ function TzReviewStep({ projectType, rooms, tzByRoom, sowMissing, sowUnclear, de
   };
 
   const CAT_TO_TYPE = {
-    "Матеріали та текстури": "material",
-    "Меблі та моделі": "todo",
-    "Сезон / атмосфера": "style",
-    "Тип освітлення": "style",
-    "Креслення та планування": "dimension",
-    "Логотип / написи": "todo",
-    "Вимоги клієнта": "todo",
-    "Специфічні запити": "comment",
+    "Materials & Textures": "material",
+    "Furniture & Objects": "todo",
+    "References": "style",
+    "Drawings": "dimension",
+    "Client Requirements": "todo",
+    "Technical Requirements": "comment",
   };
 
   const tableRows = useMemo(() => {
@@ -1956,9 +1954,9 @@ function TzReviewStep({ projectType, rooms, tzByRoom, sowMissing, sowUnclear, de
       const type = it.imgRef ? "image" : (CAT_TO_TYPE[it.category] || "todo");
       rows.push({ id: it.id, type, text: it.text, quote: it.quote, room: it.room || "—", category: it.category || "—", stage: it.stage || "—", source: it.source || "—", img_ref: it.imgRef || null, _item: it });
     });
-    (conflicts || []).forEach((c, i) => rows.push({ id: `conflict-${i}`, type: "conflict", text: c, quote: null, room: "—", category: "Конфлікт", stage: "—", source: "—", img_ref: null, _item: null }));
-    (sowMissing || []).forEach((m, i) => rows.push({ id: `missing-${i}`, type: "missing", text: m, quote: null, room: "—", category: "SOW відсутнє", stage: "—", source: "—", img_ref: null, _item: null }));
-    (sowUnclear || []).forEach((u, i) => rows.push({ id: `unclear-${i}`, type: "unclear", text: u, quote: null, room: "—", category: "SOW неповно", stage: "—", source: "—", img_ref: null, _item: null }));
+    (conflicts || []).forEach((c, i) => rows.push({ id: `conflict-${i}`, type: "conflict", text: c, quote: null, room: "—", category: "Conflict", stage: "—", source: "—", img_ref: null, _item: null }));
+    (sowMissing || []).forEach((m, i) => rows.push({ id: `missing-${i}`, type: "missing", text: m, quote: null, room: "—", category: "SOW Missing", stage: "—", source: "—", img_ref: null, _item: null }));
+    (sowUnclear || []).forEach((u, i) => rows.push({ id: `unclear-${i}`, type: "unclear", text: u, quote: null, room: "—", category: "SOW Unclear", stage: "—", source: "—", img_ref: null, _item: null }));
     return rows;
   }, [allItems, conflicts, sowMissing, sowUnclear]);
 
@@ -1977,29 +1975,29 @@ function TzReviewStep({ projectType, rooms, tzByRoom, sowMissing, sowUnclear, de
   const toggleSort = col => setTableSort(s => ({ col, dir: s.col === col && s.dir === "asc" ? "desc" : "asc" }));
 
   const TYPE_META = {
-    todo:      { label: "TODO",      color: "#2980b9", bg: "#eaf4fb" },
-    material:  { label: "МАТЕРІАЛ",  color: "#8e44ad", bg: "#f5eefb" },
-    style:     { label: "СТИЛЬ",     color: "#27ae60", bg: "#e8f8ee" },
-    dimension: { label: "РОЗМІР",    color: "#e67e22", bg: "#fef5e7" },
-    image:     { label: "ЗОБРАЖЕННЯ",color: "#16a085", bg: "#e8f8f5" },
-    comment:   { label: "КОМЕНТАР",  color: "#7f8c8d", bg: "#f4f6f7" },
-    conflict:  { label: "КОНФЛІКТ",  color: "#e74c3c", bg: "#fde8e8" },
-    missing:   { label: "ВІДСУТНЄ",  color: "#c0392b", bg: "#fde8e8" },
-    unclear:   { label: "НЕПОВНО",   color: "#e67e22", bg: "#fff8ec" },
+    todo:      { label: "TODO",     color: "#2980b9", bg: "#eaf4fb" },
+    material:  { label: "MATERIAL", color: "#8e44ad", bg: "#f5eefb" },
+    style:     { label: "STYLE",    color: "#27ae60", bg: "#e8f8ee" },
+    dimension: { label: "SIZE",     color: "#e67e22", bg: "#fef5e7" },
+    image:     { label: "IMAGE",    color: "#16a085", bg: "#e8f8f5" },
+    comment:   { label: "COMMENT",  color: "#7f8c8d", bg: "#f4f6f7" },
+    conflict:  { label: "CONFLICT", color: "#e74c3c", bg: "#fde8e8" },
+    missing:   { label: "MISSING",  color: "#c0392b", bg: "#fde8e8" },
+    unclear:   { label: "UNCLEAR",  color: "#e67e22", bg: "#fff8ec" },
   };
 
   const roomData = tzByRoom?.[activeRoom] || {};
   const totalItems = Object.values(tzByRoom || {}).flatMap(r => Object.values(r)).flat().length;
 
   const copyClientRequest = () => {
-    const lines = ["Для завершення ТЗ потрібна додаткова інформація:\n"];
+    const lines = ["Additional information needed to complete the brief:\n"];
     if (sowMissing?.length > 0) {
-      lines.push("Відсутня інформація:");
+      lines.push("Missing information:");
       sowMissing.forEach((s, i) => lines.push(`${i + 1}. ${s}`));
       lines.push("");
     }
     if (sowUnclear?.length > 0) {
-      lines.push("Потребує уточнення:");
+      lines.push("Needs clarification:");
       sowUnclear.forEach((s, i) => lines.push(`${i + 1}. ${s}`));
     }
     navigator.clipboard.writeText(lines.join("\n")).catch(() => {});
@@ -2007,7 +2005,7 @@ function TzReviewStep({ projectType, rooms, tzByRoom, sowMissing, sowUnclear, de
 
   const copyMd = () => {
     const lines = [];
-    (rooms || ["Загальне"]).forEach(room => {
+    (rooms || ["General"]).forEach(room => {
       const rd = tzByRoom?.[room] || {};
       if (!Object.keys(rd).length) return;
       lines.push(`\n## ${room}`);
@@ -2022,26 +2020,26 @@ function TzReviewStep({ projectType, rooms, tzByRoom, sowMissing, sowUnclear, de
   const exportExcel = async () => {
     const XLSX = await loadXLSX();
     const data = filteredRows.map(row => ({
-      "Тип":      row.type,
-      "Вимога":   row.text,
-      "Цитата":   row.quote || "",
-      "Категорія": row.category,
-      "Приміщення": row.room,
-      "Стадія":   row.stage,
-      "Джерело":  row.source + (row.img_ref?.pageNum > 1 ? ` стор.${row.img_ref.pageNum}` : ""),
-      "Посилання": (row._item?.links || []).map(l => l.url).join(", "),
+      "Type":     row.type,
+      "Item":     row.text,
+      "Quote":    row.quote || "",
+      "Category": row.category,
+      "Room":     row.room,
+      "Stage":    row.stage,
+      "Source":   row.source + (row.img_ref?.pageNum > 1 ? ` p.${row.img_ref.pageNum}` : ""),
+      "Links":    (row._item?.links || []).map(l => l.url).join(", "),
     }));
     const ws = XLSX.utils.json_to_sheet(data);
     // Column widths
     ws["!cols"] = [8, 60, 40, 20, 20, 16, 20, 40].map(w => ({ wch: w }));
     const wb = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(wb, ws, "ТЗ");
+    XLSX.utils.book_append_sheet(wb, ws, "Brief");
     XLSX.writeFile(wb, `tz-${new Date().toISOString().slice(0,10)}.xlsx`);
   };
 
   const exportPdf = () => {
     const prev = document.title;
-    document.title = `ТЗ — ${projectType || "проект"} — ${new Date().toLocaleDateString("uk-UA")}`;
+    document.title = `Brief — ${projectType || "project"} — ${new Date().toLocaleDateString("en-US")}`;
     window.print();
     document.title = prev;
   };
@@ -2054,36 +2052,36 @@ function TzReviewStep({ projectType, rooms, tzByRoom, sowMissing, sowUnclear, de
     if (deliverySpec?.length) {
       const rows = isClient
         ? deliverySpec.map(i => ({ "Parameter": i.key, "Value": i.value || "—", "Status": i.source === "unclear" ? "⚠ to clarify" : "" }))
-        : deliverySpec.map(i => ({ "Параметр": i.key, "Значення": i.value || "—", "Джерело": i.source === "brief" ? "✓ з брифу" : i.source === "default" ? "дефолт" : "⚠ уточнити" }));
+        : deliverySpec.map(i => ({ "Parameter": i.key, "Value": i.value || "—", "Source": i.source === "brief" ? "✓ from brief" : i.source === "default" ? "default" : "⚠ to clarify" }));
       const ws = XLSX.utils.json_to_sheet(rows);
       ws["!cols"] = [30, 30, 16].map(w => ({ wch: w }));
-      XLSX.utils.book_append_sheet(wb, ws, isClient ? "Delivery Spec" : "Техспек");
+      XLSX.utils.book_append_sheet(wb, ws, isClient ? "Delivery Spec" : "Tech Spec");
     }
 
     if (!isClient && sowCoverage?.length) {
-      const rows = sowCoverage.map(r => ({ "Пункт SOW": r.item, "Статус": r.status === "found" ? "✅ знайдено" : r.status === "partial" ? "⚠️ неповно" : "❌ відсутнє", "Знайдено": r.found || "—", "Джерело": r.source || "—" }));
+      const rows = sowCoverage.map(r => ({ "SOW Item": r.item, "Status": r.status === "found" ? "✅ found" : r.status === "partial" ? "⚠️ partial" : "❌ missing", "Found": r.found || "—", "Source": r.source || "—" }));
       const ws = XLSX.utils.json_to_sheet(rows);
       ws["!cols"] = [40, 16, 40, 24].map(w => ({ wch: w }));
       XLSX.utils.book_append_sheet(wb, ws, "SOW Coverage");
     }
 
     if (!isClient && conflicts?.length) {
-      const rows = conflicts.map((c, i) => ({ "#": i + 1, "Конфлікт": typeof c === "string" ? c : (c.description || c.text || "") }));
+      const rows = conflicts.map((c, i) => ({ "#": i + 1, "Conflict": typeof c === "string" ? c : (c.description || c.text || "") }));
       const ws = XLSX.utils.json_to_sheet(rows);
       ws["!cols"] = [4, 80].map(w => ({ wch: w }));
-      XLSX.utils.book_append_sheet(wb, ws, "Конфлікти");
+      XLSX.utils.book_append_sheet(wb, ws, "Conflicts");
     }
 
     const missing = sowMissing || [];
     const unclear = sowUnclear || [];
     if (missing.length || unclear.length) {
       const rows = [
-        ...missing.map(s => ({ [isClient ? "Type" : "Тип"]: isClient ? "Missing" : "Відсутнє", [isClient ? "Question" : "Питання"]: s })),
-        ...unclear.map(s => ({ [isClient ? "Type" : "Тип"]: isClient ? "Incomplete" : "Неповно",  [isClient ? "Question" : "Питання"]: s })),
+        ...missing.map(s => ({ "Type": isClient ? "Missing" : "Missing", "Question": s })),
+        ...unclear.map(s => ({ "Type": isClient ? "Incomplete" : "Unclear",  "Question": s })),
       ];
       const ws = XLSX.utils.json_to_sheet(rows);
       ws["!cols"] = [14, 80].map(w => ({ wch: w }));
-      XLSX.utils.book_append_sheet(wb, ws, isClient ? "Open Questions" : "Питання");
+      XLSX.utils.book_append_sheet(wb, ws, isClient ? "Open Questions" : "Questions");
     }
 
     XLSX.writeFile(wb, `report-${isClient ? "client" : "pm"}-${date}.xlsx`);
@@ -2094,7 +2092,7 @@ function TzReviewStep({ projectType, rooms, tzByRoom, sowMissing, sowUnclear, de
     const specRows = (deliverySpec || []).map((item, i) => `
       <tr style="background:${i%2===0?"#fafafa":"#fff"}">
         <td>${item.key}</td><td>${item.value || "—"}</td>
-        ${isClient ? `<td style="color:${item.source==="unclear"?"#e67e22":"#aaa"}">${item.source==="unclear"?"⚠ to clarify":""}</td>` : `<td style="color:${item.source==="brief"?"#27ae60":item.source==="unclear"?"#e67e22":"#aaa"}">${item.source==="brief"?"✓ з брифу":item.source==="unclear"?"⚠ уточнити":"дефолт"}</td>`}
+        ${isClient ? `<td style="color:${item.source==="unclear"?"#e67e22":"#aaa"}">${item.source==="unclear"?"⚠ to clarify":""}</td>` : `<td style="color:${item.source==="brief"?"#27ae60":item.source==="unclear"?"#e67e22":"#aaa"}">${item.source==="brief"?"✓ from brief":item.source==="unclear"?"⚠ to clarify":"default"}</td>`}
       </tr>`).join("");
     const coverageRows = (!isClient && sowCoverage?.length) ? sowCoverage.map((row, i) => `
       <tr style="background:${i%2===0?"#fafafa":"#fff"}">
@@ -2104,16 +2102,16 @@ function TzReviewStep({ projectType, rooms, tzByRoom, sowMissing, sowUnclear, de
       </tr>`).join("") : "";
     const conflictRows = (!isClient && conflicts?.length) ? conflicts.map(c => `<div style="padding:8px 12px;border-left:3px solid #e74c3c;margin-bottom:6px;font-size:11px">⚡ ${typeof c==="string"?c:(c.description||c.text||"")}</div>`).join("") : "";
     const allQ = [...(sowMissing||[]).map(s=>`<div style="padding:8px 12px;border-left:3px solid #e74c3c;margin-bottom:6px;font-size:11px">❌ ${s}</div>`), ...(sowUnclear||[]).map(s=>`<div style="padding:8px 12px;border-left:3px solid #e67e22;margin-bottom:6px;font-size:11px">⚠️ ${s}</div>`)].join("");
-    const html = `<!DOCTYPE html><html><head><meta charset="UTF-8"><title>${isClient?"Client Report":"Звіт ПМа"} — ${projectType} — ${date}</title>
+    const html = `<!DOCTYPE html><html><head><meta charset="UTF-8"><title>${isClient?"Client Report":"PM Report"} — ${projectType} — ${date}</title>
     <style>body{font-family:monospace;font-size:11px;color:#222;padding:32px;max-width:900px;margin:0 auto}h2{font-size:13px;font-weight:700;margin:24px 0 8px;letter-spacing:.08em;color:#555}table{width:100%;border-collapse:collapse;margin-bottom:8px}th{background:#f0eeea;padding:5px 10px;text-align:left;font-size:9px;letter-spacing:.08em;color:#888}td{padding:6px 10px;border-bottom:1px solid #f0f0f0;vertical-align:top}@media print{body{padding:16px}}</style>
     </head><body>
-    <div style="font-size:10px;color:#bbb;margin-bottom:4px">${isClient?"CLIENT REPORT":"ЗВІТ ПМА"}</div>
+    <div style="font-size:10px;color:#bbb;margin-bottom:4px">${isClient?"CLIENT REPORT":"PM REPORT"}</div>
     <div style="font-size:16px;font-weight:700;margin-bottom:4px">${projectType||""}</div>
     <div style="font-size:10px;color:#aaa;margin-bottom:24px">${date}</div>
-    ${specRows?`<h2>${isClient?"DELIVERY SPECIFICATION":"ТЕХНІЧНА СПЕЦИФІКАЦІЯ"}</h2><table><thead><tr><th>${isClient?"Parameter":"Параметр"}</th><th>${isClient?"Value":"Значення"}</th><th>${isClient?"Status":"Джерело"}</th></tr></thead><tbody>${specRows}</tbody></table>`:""}
-    ${coverageRows?`<h2>SOW ПОКРИТТЯ</h2><table><thead><tr><th>Пункт SOW</th><th>Статус</th><th>Знайдено</th><th>Джерело</th></tr></thead><tbody>${coverageRows}</tbody></table>`:""}
-    ${conflictRows?`<h2>КОНФЛІКТИ МІЖ ФАЙЛАМИ</h2>${conflictRows}`:""}
-    ${allQ?`<h2>${isClient?"OPEN QUESTIONS":"ПИТАННЯ ДО КЛІЄНТА"}</h2>${allQ}`:""}
+    ${specRows?`<h2>${isClient?"DELIVERY SPECIFICATION":"TECHNICAL SPECIFICATION"}</h2><table><thead><tr><th>Parameter</th><th>Value</th><th>${isClient?"Status":"Source"}</th></tr></thead><tbody>${specRows}</tbody></table>`:""}
+    ${coverageRows?`<h2>SOW COVERAGE</h2><table><thead><tr><th>SOW Item</th><th>Status</th><th>Found</th><th>Source</th></tr></thead><tbody>${coverageRows}</tbody></table>`:""}
+    ${conflictRows?`<h2>FILE CONFLICTS</h2>${conflictRows}`:""}
+    ${allQ?`<h2>${isClient?"OPEN QUESTIONS":"CLIENT QUESTIONS"}</h2>${allQ}`:""}
     </body></html>`;
     const w = window.open("", "_blank");
     w.document.write(html);
@@ -2126,16 +2124,16 @@ function TzReviewStep({ projectType, rooms, tzByRoom, sowMissing, sowUnclear, de
     <div style={{ minHeight: "100vh", background: "#f5f4f1", display: "flex", flexDirection: "column" }}>
       {lightbox && <ImageLightbox imgRef={lightbox.imgRef} itemText={lightbox.itemText} onClose={() => setLightbox(null)} />}
       {docViewer && <DocViewer key={`${docViewer.source?.filename}-${docViewer.pageNum}`} source={docViewer.source} initialPage={docViewer.pageNum} itemText={docViewer.itemText} onClose={() => setDocViewer(null)} />}
-      {/* Топ-бар */}
+      {/* Top bar */}
       <div style={{ background: "#1a1a1a", padding: "0 20px", display: "flex", alignItems: "center", gap: 12, height: 44, flexShrink: 0 }}>
         <button onClick={onBack} style={{ background: "none", border: "none", color: "#666", cursor: "pointer", fontSize: 16, padding: 0 }}>←</button>
         <span style={{ fontSize: 11, fontWeight: 700, color: "#f2f0ec", fontFamily: "monospace", letterSpacing: "0.1em" }}>ТЗ TOOL</span>
         {projectType && <span style={{ fontSize: 9, color: "#fff", background: "#2980b9", fontFamily: "monospace", padding: "2px 8px", borderRadius: 10 }}>{projectType}</span>}
-        <span style={{ fontSize: 9, color: "#555", fontFamily: "monospace", marginLeft: "auto" }}>{totalItems} вимог</span>
+        <span style={{ fontSize: 9, color: "#555", fontFamily: "monospace", marginLeft: "auto" }}>{totalItems} items</span>
         {(sowMissing?.length > 0 || sowUnclear?.length > 0) && (
-          <button onClick={copyClientRequest} title="Скопіювати список питань для клієнта"
+          <button onClick={copyClientRequest} title="Copy client questions"
             style={{ fontSize: 9, fontFamily: "monospace", background: "#e67e22", border: "none", color: "#fff", padding: "3px 10px", borderRadius: 4, cursor: "pointer", fontWeight: 700 }}>
-            Запит ({(sowMissing?.length || 0) + (sowUnclear?.length || 0)})
+            Request ({(sowMissing?.length || 0) + (sowUnclear?.length || 0)})
           </button>
         )}
         <button onClick={exportPdf} style={{ fontSize: 9, fontFamily: "monospace", background: "none", border: "1px solid #333", color: "#666", padding: "3px 10px", borderRadius: 4, cursor: "pointer" }}>PDF</button>
@@ -2148,32 +2146,32 @@ function TzReviewStep({ projectType, rooms, tzByRoom, sowMissing, sowUnclear, de
           {/* Filter bar */}
           <div style={{ display: "flex", gap: 8, marginBottom: 12, flexWrap: "wrap", alignItems: "center" }}>
             <input
-              placeholder="Пошук..."
+              placeholder="Search..."
               value={tableFilter.search}
               onChange={e => setTableFilter(f => ({ ...f, search: e.target.value }))}
               style={{ fontSize: 11, fontFamily: "monospace", padding: "5px 10px", border: "1px solid #ddd", borderRadius: 4, background: "#fff", width: 180 }}
             />
             <select value={tableFilter.type} onChange={e => setTableFilter(f => ({ ...f, type: e.target.value }))}
               style={{ fontSize: 11, fontFamily: "monospace", padding: "5px 8px", border: "1px solid #ddd", borderRadius: 4, background: "#fff" }}>
-              <option value="">Всі типи</option>
+              <option value="">All types</option>
               {Object.entries(TYPE_META).map(([k, v]) => <option key={k} value={k}>{v.label}</option>)}
             </select>
             <select value={tableFilter.room} onChange={e => setTableFilter(f => ({ ...f, room: e.target.value }))}
               style={{ fontSize: 11, fontFamily: "monospace", padding: "5px 8px", border: "1px solid #ddd", borderRadius: 4, background: "#fff" }}>
-              <option value="">Всі кімнати</option>
+              <option value="">All rooms</option>
               {allRooms.map(r => <option key={r} value={r}>{r}</option>)}
             </select>
             <select value={tableFilter.stage} onChange={e => setTableFilter(f => ({ ...f, stage: e.target.value }))}
               style={{ fontSize: 11, fontFamily: "monospace", padding: "5px 8px", border: "1px solid #ddd", borderRadius: 4, background: "#fff" }}>
-              <option value="">Всі стадії</option>
+              <option value="">All stages</option>
               {PRODUCTION_STAGES.map(s => <option key={s} value={s}>{s}</option>)}
             </select>
             <button onClick={() => setViewMode("rooms")}
-              style={{ fontSize: 9, fontFamily: "monospace", background: "none", border: "1px solid #ddd", color: "#888", padding: "4px 10px", borderRadius: 4, cursor: "pointer" }}>← назад</button>
-            <span style={{ fontSize: 10, fontFamily: "monospace", color: "#aaa", marginLeft: "auto" }}>{filteredRows.length} рядків</span>
+              style={{ fontSize: 9, fontFamily: "monospace", background: "none", border: "1px solid #ddd", color: "#888", padding: "4px 10px", borderRadius: 4, cursor: "pointer" }}>← back</button>
+            <span style={{ fontSize: 10, fontFamily: "monospace", color: "#aaa", marginLeft: "auto" }}>{filteredRows.length} rows</span>
             {(tableFilter.type || tableFilter.room || tableFilter.stage || tableFilter.search) && (
               <button onClick={() => setTableFilter({ type: "", room: "", stage: "", search: "" })}
-                style={{ fontSize: 9, fontFamily: "monospace", padding: "4px 10px", border: "1px solid #ddd", borderRadius: 4, background: "#fff", cursor: "pointer", color: "#e74c3c" }}>✕ скинути</button>
+                style={{ fontSize: 9, fontFamily: "monospace", padding: "4px 10px", border: "1px solid #ddd", borderRadius: 4, background: "#fff", cursor: "pointer", color: "#e74c3c" }}>✕ reset</button>
             )}
           </div>
           {/* Table */}
@@ -2182,12 +2180,12 @@ function TzReviewStep({ projectType, rooms, tzByRoom, sowMissing, sowUnclear, de
               <thead>
                 <tr style={{ background: "#f8f7f5", borderBottom: "2px solid #e5e5e5" }}>
                   {[
-                    { key: "type", label: "ТИП" },
-                    { key: "text", label: "ЗМІСТ" },
-                    { key: "category", label: "КАТЕГОРІЯ" },
-                    { key: "room", label: "КІМНАТА" },
-                    { key: "stage", label: "СТАДІЯ" },
-                    { key: "source", label: "ДЖЕРЕЛО" },
+                    { key: "type", label: "TYPE" },
+                    { key: "text", label: "ITEM" },
+                    { key: "category", label: "CATEGORY" },
+                    { key: "room", label: "ROOM" },
+                    { key: "stage", label: "STAGE" },
+                    { key: "source", label: "SOURCE" },
                   ].map(col => (
                     <th key={col.key} onClick={() => toggleSort(col.key)}
                       style={{ padding: "8px 12px", textAlign: "left", fontSize: 8, fontFamily: "monospace", letterSpacing: "0.1em", color: tableSort.col === col.key ? "#1a1a1a" : "#aaa", cursor: "pointer", userSelect: "none", whiteSpace: "nowrap" }}>
@@ -2239,11 +2237,11 @@ function TzReviewStep({ projectType, rooms, tzByRoom, sowMissing, sowUnclear, de
                         {srcFile ? (
                           <button onClick={() => openDocViewer(srcFile.filename, row.img_ref?.pageNum || 1, row.text)}
                             style={{ fontSize: 9, fontFamily: "monospace", color: "#2980b9", background: "none", border: "1px solid #c5dff0", borderRadius: 3, padding: "2px 8px", cursor: "pointer" }}>
-                            {row.source}{row.img_ref?.pageNum > 1 ? ` стор.${row.img_ref.pageNum}` : ""}
+                            {row.source}{row.img_ref?.pageNum > 1 ? ` p.${row.img_ref.pageNum}` : ""}
                           </button>
                         ) : row.source && row.source !== "—" ? (
                           <span onClick={() => openDocByLabel(row.source, row.text)}
-                            style={{ fontSize: 9, fontFamily: "monospace", color: "#e67e22", cursor: "pointer", textDecoration: "underline dotted" }} title="Спробувати знайти документ">
+                            style={{ fontSize: 9, fontFamily: "monospace", color: "#e67e22", cursor: "pointer", textDecoration: "underline dotted" }} title="Try to locate document">
                             {row.source}
                           </span>
                         ) : (
@@ -2254,7 +2252,7 @@ function TzReviewStep({ projectType, rooms, tzByRoom, sowMissing, sowUnclear, de
                   );
                 })}
                 {filteredRows.length === 0 && (
-                  <tr><td colSpan={6} style={{ padding: "32px", textAlign: "center", fontSize: 11, color: "#bbb", fontFamily: "monospace" }}>Нічого не знайдено</td></tr>
+                  <tr><td colSpan={6} style={{ padding: "32px", textAlign: "center", fontSize: 11, color: "#bbb", fontFamily: "monospace" }}>No results</td></tr>
                 )}
               </tbody>
             </table>
@@ -2271,14 +2269,14 @@ function TzReviewStep({ projectType, rooms, tzByRoom, sowMissing, sowUnclear, de
         const cConfl  = isClient && clientTranslation ? clientTranslation.conflicts    : (conflicts||[]);
         return (
         <div style={{ flex: 1, overflow: "auto", padding: "16px 20px", background: "#f5f4f1" }}>
-          {/* Toggle ПМ / Клієнт */}
+          {/* Toggle PM / Client */}
           <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 20 }}>
-            <button onClick={() => setViewMode("rooms")} style={{ fontSize: 9, fontFamily: "monospace", padding: "4px 10px", border: "1px solid #ddd", borderRadius: 4, cursor: "pointer", background: "#fff", color: "#555" }}>← Розбір</button>
+            <button onClick={() => setViewMode("rooms")} style={{ fontSize: 9, fontFamily: "monospace", padding: "4px 10px", border: "1px solid #ddd", borderRadius: 4, cursor: "pointer", background: "#fff", color: "#555" }}>← Analysis</button>
             <div style={{ width: 1, height: 16, background: "#e0e0e0", margin: "0 4px" }} />
-            <button onClick={() => setReportMode("pm")} style={{ fontSize: 9, fontFamily: "monospace", padding: "4px 14px", border: "none", borderRadius: 4, cursor: "pointer", background: !isClient ? "#1a1a1a" : "#e8e6e2", color: !isClient ? "#fff" : "#888", fontWeight: !isClient ? 700 : 400 }}>ПМ</button>
-            <button onClick={() => { setReportMode("client"); onBuildClientTranslation?.(); }} style={{ fontSize: 9, fontFamily: "monospace", padding: "4px 14px", border: "none", borderRadius: 4, cursor: "pointer", background: isClient ? "#2980b9" : "#e8e6e2", color: isClient ? "#fff" : "#888", fontWeight: isClient ? 700 : 400 }}>Клієнт</button>
+            <button onClick={() => setReportMode("pm")} style={{ fontSize: 9, fontFamily: "monospace", padding: "4px 14px", border: "none", borderRadius: 4, cursor: "pointer", background: !isClient ? "#1a1a1a" : "#e8e6e2", color: !isClient ? "#fff" : "#888", fontWeight: !isClient ? 700 : 400 }}>PM</button>
+            <button onClick={() => { setReportMode("client"); onBuildClientTranslation?.(); }} style={{ fontSize: 9, fontFamily: "monospace", padding: "4px 14px", border: "none", borderRadius: 4, cursor: "pointer", background: isClient ? "#2980b9" : "#e8e6e2", color: isClient ? "#fff" : "#888", fontWeight: isClient ? 700 : 400 }}>Client</button>
             <span style={{ fontSize: 9, fontFamily: "monospace", color: "#bbb", marginLeft: 4 }}>
-              {!isClient ? "внутрішній — конфлікти, джерела, повне покриття" : buildingClientTranslation ? "⏳ translating..." : clientTranslation ? "translated ✓" : "external — delivery spec + open questions"}
+              {!isClient ? "internal — conflicts, sources, full coverage" : buildingClientTranslation ? "⏳ translating..." : clientTranslation ? "translated ✓" : "external — delivery spec + open questions"}
             </span>
             <div style={{ marginLeft: "auto", display: "flex", gap: 6 }}>
               <button onClick={() => exportReportExcel(isClient)} style={{ fontSize: 9, fontFamily: "monospace", padding: "4px 12px", border: "1px solid #27ae60", borderRadius: 4, cursor: "pointer", background: "#fff", color: "#27ae60", fontWeight: 700 }}>↓ XLS</button>
@@ -2288,7 +2286,7 @@ function TzReviewStep({ projectType, rooms, tzByRoom, sowMissing, sowUnclear, de
 
           {(buildingCoverage || buildingClientTranslation) && (
             <div style={{ display: "flex", alignItems: "center", gap: 10, padding: 16, color: "#888", fontFamily: "monospace", fontSize: 12, background: "#fff", borderRadius: 6, marginBottom: 16 }}>
-              <span style={{ fontSize: 16 }}>⏳</span> {buildingClientTranslation ? "Translating report to English..." : isClient ? "Building SOW matrix..." : "Генерую SOW-матрицю..."}
+              <span style={{ fontSize: 16 }}>⏳</span> {buildingClientTranslation ? "Translating report to English..." : "Building SOW matrix..."}
             </div>
           )}
 
@@ -2297,32 +2295,32 @@ function TzReviewStep({ projectType, rooms, tzByRoom, sowMissing, sowUnclear, de
             {/* DELIVERY SPEC */}
             {cSpec?.length > 0 && (
               <div style={{ marginBottom: 24 }}>
-                <div style={{ fontSize: 9, fontFamily: "monospace", color: "#bbb", letterSpacing: "0.12em", marginBottom: 8 }}>{isClient ? "DELIVERY SPECIFICATION" : "ТЕХНІЧНА СПЕЦИФІКАЦІЯ"}</div>
+                <div style={{ fontSize: 9, fontFamily: "monospace", color: "#bbb", letterSpacing: "0.12em", marginBottom: 8 }}>{isClient ? "DELIVERY SPECIFICATION" : "TECHNICAL SPECIFICATION"}</div>
                 <div style={{ border: "1px solid #e0e0e0", borderRadius: 6, overflow: "hidden", background: "#fff" }}>
                   {cSpec.map((item, i) => (
                     <div key={i} style={{ display: "flex", alignItems: "center", padding: "7px 14px", background: i % 2 === 0 ? "#fafafa" : "#fff", borderBottom: i < cSpec.length - 1 ? "1px solid #f0f0f0" : "none" }}>
                       <span style={{ fontSize: 11, color: "#777", fontFamily: "monospace", width: 180, flexShrink: 0 }}>{item.key}</span>
                       <span style={{ fontSize: 12, color: item.source === "unclear" ? "#bbb" : "#222", flex: 1, fontFamily: "monospace" }}>{item.value || "—"}</span>
-                      {!isClient && item.source === "brief"   && <span style={{ fontSize: 9, color: "#27ae60", fontFamily: "monospace", fontWeight: 700, whiteSpace: "nowrap" }}>✓ з брифу</span>}
-                      {!isClient && item.source === "default" && <span style={{ fontSize: 9, color: "#aaa",    fontFamily: "monospace",               whiteSpace: "nowrap" }}>дефолт</span>}
-                      {item.source === "unclear" && <span style={{ fontSize: 9, color: "#e67e22", fontFamily: "monospace", fontWeight: 700, whiteSpace: "nowrap" }}>{isClient ? "⚠ to clarify" : "⚠ уточнити"}</span>}
+                      {!isClient && item.source === "brief"   && <span style={{ fontSize: 9, color: "#27ae60", fontFamily: "monospace", fontWeight: 700, whiteSpace: "nowrap" }}>✓ from brief</span>}
+                      {!isClient && item.source === "default" && <span style={{ fontSize: 9, color: "#aaa",    fontFamily: "monospace",               whiteSpace: "nowrap" }}>default</span>}
+                      {item.source === "unclear" && <span style={{ fontSize: 9, color: "#e67e22", fontFamily: "monospace", fontWeight: 700, whiteSpace: "nowrap" }}>⚠ to clarify</span>}
                     </div>
                   ))}
                 </div>
               </div>
             )}
 
-            {/* SOW COVERAGE — тільки в режимі ПМ */}
+            {/* SOW COVERAGE — PM mode only */}
             {!isClient && (
               <div style={{ marginBottom: 24 }}>
-                <div style={{ fontSize: 9, fontFamily: "monospace", color: "#bbb", letterSpacing: "0.12em", marginBottom: 8 }}>SOW ПОКРИТТЯ — {projectType}</div>
+                <div style={{ fontSize: 9, fontFamily: "monospace", color: "#bbb", letterSpacing: "0.12em", marginBottom: 8 }}>SOW COVERAGE — {projectType}</div>
                 {!sowCoverage?.length && !buildingCoverage ? (
-                  <div style={{ color: "#bbb", fontFamily: "monospace", fontSize: 11, padding: "12px 0" }}>Матриця ще не побудована</div>
+                  <div style={{ color: "#bbb", fontFamily: "monospace", fontSize: 11, padding: "12px 0" }}>Matrix not built yet</div>
                 ) : sowCoverage?.length > 0 && (
                   <>
                     <div style={{ border: "1px solid #e0e0e0", borderRadius: 6, overflow: "hidden", background: "#fff" }}>
                       <div style={{ display: "grid", gridTemplateColumns: "1fr 72px 1fr 140px", padding: "6px 14px", background: "#f0eeea", borderBottom: "1px solid #e0e0e0" }}>
-                        {["Пункт SOW", "Статус", "Знайдено", "Джерело"].map(h => (
+                        {["SOW Item", "Status", "Found", "Source"].map(h => (
                           <span key={h} style={{ fontSize: 9, fontWeight: 700, color: "#888", fontFamily: "monospace", letterSpacing: "0.08em" }}>{h}</span>
                         ))}
                       </div>
@@ -2344,17 +2342,17 @@ function TzReviewStep({ projectType, rooms, tzByRoom, sowMissing, sowUnclear, de
                       })}
                     </div>
                     <div style={{ marginTop: 6, fontSize: 9, color: "#bbb", fontFamily: "monospace" }}>
-                      {sowCoverage.filter(r => r.status === "found").length} знайдено · {sowCoverage.filter(r => r.status === "partial").length} неповно · {sowCoverage.filter(r => r.status === "missing").length} відсутнє
+                      {sowCoverage.filter(r => r.status === "found").length} found · {sowCoverage.filter(r => r.status === "partial").length} partial · {sowCoverage.filter(r => r.status === "missing").length} missing
                     </div>
                   </>
                 )}
               </div>
             )}
 
-            {/* КОНФЛІКТИ — тільки в режимі ПМ */}
+            {/* CONFLICTS — PM mode only */}
             {!isClient && conflicts?.length > 0 && (
               <div style={{ marginBottom: 24 }}>
-                <div style={{ fontSize: 9, fontFamily: "monospace", color: "#bbb", letterSpacing: "0.12em", marginBottom: 8 }}>КОНФЛІКТИ МІЖ ФАЙЛАМИ</div>
+                <div style={{ fontSize: 9, fontFamily: "monospace", color: "#bbb", letterSpacing: "0.12em", marginBottom: 8 }}>FILE CONFLICTS</div>
                 <div style={{ border: "1px solid #fce4d6", borderRadius: 6, overflow: "hidden", background: "#fff" }}>
                   {conflicts.map((c, i) => (
                     <div key={i} style={{ display: "flex", gap: 10, padding: "10px 14px", background: i % 2 === 0 ? "#fffaf8" : "#fff", borderBottom: i < conflicts.length - 1 ? "1px solid #fce4d6" : "none", alignItems: "flex-start" }}>
@@ -2366,10 +2364,10 @@ function TzReviewStep({ projectType, rooms, tzByRoom, sowMissing, sowUnclear, de
               </div>
             )}
 
-            {/* ПИТАННЯ / OPEN QUESTIONS */}
+            {/* QUESTIONS / OPEN QUESTIONS */}
             {(cQMiss?.length > 0 || cQUnc?.length > 0) && (
               <div style={{ marginBottom: 24 }}>
-                <div style={{ fontSize: 9, fontFamily: "monospace", color: "#bbb", letterSpacing: "0.12em", marginBottom: 8 }}>{isClient ? "OPEN QUESTIONS" : "ПИТАННЯ ДО КЛІЄНТА"}</div>
+                <div style={{ fontSize: 9, fontFamily: "monospace", color: "#bbb", letterSpacing: "0.12em", marginBottom: 8 }}>{isClient ? "OPEN QUESTIONS" : "CLIENT QUESTIONS"}</div>
                 <div style={{ border: "1px solid #e0e0e0", borderRadius: 6, overflow: "hidden", background: "#fff" }}>
                   {cQMiss.map((s, i) => (
                     <div key={`miss-${i}`} style={{ display: "flex", gap: 10, padding: "9px 14px", background: i % 2 === 0 ? "#fffaf8" : "#fff", borderBottom: "1px solid #f5f0ec", alignItems: "flex-start" }}>
@@ -2387,15 +2385,15 @@ function TzReviewStep({ projectType, rooms, tzByRoom, sowMissing, sowUnclear, de
                 <div style={{ marginTop: 6, fontSize: 9, color: "#bbb", fontFamily: "monospace" }}>
                   {isClient
                     ? `${cQMiss.length} missing · ${cQUnc.length} incomplete`
-                    : `${cQMiss.length} відсутніх · ${cQUnc.length} неповних`}
+                    : `${cQMiss.length} missing · ${cQUnc.length} unclear`}
                 </div>
               </div>
             )}
 
-            {/* Порожній стан */}
+            {/* Empty state */}
             {!deliverySpec?.length && !sowCoverage?.length && !buildingCoverage && !conflicts?.length && !sowMissing?.length && !sowUnclear?.length && (
               <div style={{ color: "#bbb", fontFamily: "monospace", fontSize: 11, padding: "24px 0" }}>
-                {isClient ? "Report not ready — run analysis first" : "Звіт ще не побудований — запустіть аналіз"}
+                {isClient ? "Report not ready — run analysis first" : "Report not built yet — run analysis"}
               </div>
             )}
           </div>
@@ -2415,11 +2413,11 @@ function TzReviewStep({ projectType, rooms, tzByRoom, sowMissing, sowUnclear, de
 
         {/* ── SOWa ── */}
         {sowPage === "sowa" && (() => {
-          const CATS = ["Референси", "Матеріали та оздоблення", "Меблі та предмети", "Креслення", "Технічні вимоги", "Вимоги клієнта"];
+          const CATS = ["References", "Materials & Finishes", "Furniture & Objects", "Drawings", "Technical Requirements", "Client Requirements"];
           const byCategory = {};
-          allItems.forEach(item => { const cat = item.category || "Інше"; if (!byCategory[cat]) byCategory[cat] = []; byCategory[cat].push(item); });
+          allItems.forEach(item => { const cat = item.category || "Other"; if (!byCategory[cat]) byCategory[cat] = []; byCategory[cat].push(item); });
           const sortedCats = [...CATS.filter(c => byCategory[c]), ...Object.keys(byCategory).filter(c => !CATS.includes(c) && byCategory[c])];
-          if (!sortedCats.length) return <div style={{ color: "#bbb", fontFamily: "monospace", fontSize: 11, padding: "24px 0" }}>SOWa ще не побудована — запустіть аналіз</div>;
+          if (!sortedCats.length) return <div style={{ color: "#bbb", fontFamily: "monospace", fontSize: 11, padding: "24px 0" }}>SOWa not built yet — run analysis</div>;
           return (
             <>
               {annotation && <div style={{ fontSize: 10, color: "#666", marginBottom: 18, padding: "10px 14px", background: "#fff", borderRadius: 6, border: "1px solid #e8e6e1", lineHeight: 1.55 }}>{annotation}</div>}
@@ -2447,7 +2445,7 @@ function TzReviewStep({ projectType, rooms, tzByRoom, sowMissing, sowUnclear, de
         {/* ── NIQ ── */}
         {sowPage === "niq" && (() => {
           const niqEmpty = !sowMissing?.length && !sowUnclear?.length && !conflicts?.length;
-          if (niqEmpty) return <div style={{ color: "#27ae60", fontFamily: "monospace", fontSize: 11, padding: "24px 0" }}>✓ Немає питань — ТЗ повне</div>;
+          if (niqEmpty) return <div style={{ color: "#27ae60", fontFamily: "monospace", fontSize: 11, padding: "24px 0" }}>✓ No issues — brief is complete</div>;
           return (
             <>
               {sowMissing?.length > 0 && (
@@ -2498,7 +2496,7 @@ function TzReviewStep({ projectType, rooms, tzByRoom, sowMissing, sowUnclear, de
 
         {/* ── SPEC ── */}
         {sowPage === "spec" && (() => {
-          if (!deliverySpec?.length) return <div style={{ color: "#bbb", fontFamily: "monospace", fontSize: 11, padding: "24px 0" }}>SPEC не побудовано — запустіть аналіз</div>;
+          if (!deliverySpec?.length) return <div style={{ color: "#bbb", fontFamily: "monospace", fontSize: 11, padding: "24px 0" }}>SPEC not built yet — run analysis</div>;
           return (
             <div style={{ background: "#fff", borderRadius: 6, border: "1px solid #e8e6e1", overflow: "hidden" }}>
               {deliverySpec.map((item, i) => (
@@ -2509,7 +2507,7 @@ function TzReviewStep({ projectType, rooms, tzByRoom, sowMissing, sowUnclear, de
                   <span style={{ fontSize: 11, color: "#555", fontFamily: "monospace", width: 220, flexShrink: 0, paddingLeft: 6 }}>{item.key}</span>
                   <span style={{ fontSize: 12, color: item.source === "unclear" ? "#bbb" : "#1a1a1a", flex: 1 }}>{item.value || "—"}</span>
                   <span style={{ fontSize: 9, fontFamily: "monospace", whiteSpace: "nowrap", color: item.source === "brief" ? "#27ae60" : item.source === "unclear" ? "#e67e22" : "#bbb" }}>
-                    {item.source === "brief" ? "з брифу" : item.source === "default" ? "дефолт" : "уточнити"}
+                    {item.source === "brief" ? "from brief" : item.source === "default" ? "default" : "to clarify"}
                   </span>
                 </div>
               ))}
@@ -2524,16 +2522,16 @@ function TzReviewStep({ projectType, rooms, tzByRoom, sowMissing, sowUnclear, de
           {/* Annotation */}
           {annotation && (
             <div style={{ padding: "12px 14px", borderBottom: "1px solid #f0eeea" }}>
-              <div style={{ fontSize: 8, fontFamily: "monospace", color: "#bbb", letterSpacing: "0.1em", marginBottom: 4 }}>ПРОЕКТ</div>
+              <div style={{ fontSize: 8, fontFamily: "monospace", color: "#bbb", letterSpacing: "0.1em", marginBottom: 4 }}>PROJECT</div>
               <div style={{ fontSize: 10, color: "#555", lineHeight: 1.5 }}>{annotation}</div>
             </div>
           )}
           {/* View toggle */}
           <div style={{ display: "flex", padding: "8px 14px", gap: 4, borderBottom: "1px solid #f0eeea", flexWrap: "wrap" }}>
-            <button onClick={() => setViewMode("rooms")} style={{ flex: 1, fontSize: 8, fontFamily: "monospace", padding: "4px 0", border: "none", borderRadius: 3, cursor: "pointer", background: viewMode === "rooms" ? "#1a1a1a" : "#f0eeea", color: viewMode === "rooms" ? "#fff" : "#888", fontWeight: viewMode === "rooms" ? 700 : 400 }}>КІМНАТИ</button>
-            <button onClick={() => setViewMode("stages")} style={{ flex: 1, fontSize: 8, fontFamily: "monospace", padding: "4px 0", border: "none", borderRadius: 3, cursor: "pointer", background: viewMode === "stages" ? "#1a1a1a" : "#f0eeea", color: viewMode === "stages" ? "#fff" : "#888", fontWeight: viewMode === "stages" ? 700 : 400 }}>СТАДІЇ</button>
-            <button onClick={() => setViewMode("table")} style={{ flex: 1, fontSize: 8, fontFamily: "monospace", padding: "4px 0", border: "none", borderRadius: 3, cursor: "pointer", background: viewMode === "table" ? "#2980b9" : "#f0eeea", color: viewMode === "table" ? "#fff" : "#888", fontWeight: viewMode === "table" ? 700 : 400 }}>ТАБЛИЦЯ</button>
-            <button onClick={() => setViewMode("report")} style={{ flex: 1, fontSize: 8, fontFamily: "monospace", padding: "4px 0", border: "none", borderRadius: 3, cursor: "pointer", background: viewMode === "report" ? "#8e44ad" : "#f0eeea", color: viewMode === "report" ? "#fff" : "#888", fontWeight: viewMode === "report" ? 700 : 400 }}>ЗВІТ{buildingCoverage ? " ⏳" : sowCoverage?.length ? "" : ""}</button>
+            <button onClick={() => setViewMode("rooms")} style={{ flex: 1, fontSize: 8, fontFamily: "monospace", padding: "4px 0", border: "none", borderRadius: 3, cursor: "pointer", background: viewMode === "rooms" ? "#1a1a1a" : "#f0eeea", color: viewMode === "rooms" ? "#fff" : "#888", fontWeight: viewMode === "rooms" ? 700 : 400 }}>ROOMS</button>
+            <button onClick={() => setViewMode("stages")} style={{ flex: 1, fontSize: 8, fontFamily: "monospace", padding: "4px 0", border: "none", borderRadius: 3, cursor: "pointer", background: viewMode === "stages" ? "#1a1a1a" : "#f0eeea", color: viewMode === "stages" ? "#fff" : "#888", fontWeight: viewMode === "stages" ? 700 : 400 }}>STAGES</button>
+            <button onClick={() => setViewMode("table")} style={{ flex: 1, fontSize: 8, fontFamily: "monospace", padding: "4px 0", border: "none", borderRadius: 3, cursor: "pointer", background: viewMode === "table" ? "#2980b9" : "#f0eeea", color: viewMode === "table" ? "#fff" : "#888", fontWeight: viewMode === "table" ? 700 : 400 }}>TABLE</button>
+            <button onClick={() => setViewMode("report")} style={{ flex: 1, fontSize: 8, fontFamily: "monospace", padding: "4px 0", border: "none", borderRadius: 3, cursor: "pointer", background: viewMode === "report" ? "#8e44ad" : "#f0eeea", color: viewMode === "report" ? "#fff" : "#888", fontWeight: viewMode === "report" ? 700 : 400 }}>REPORT{buildingCoverage ? " ⏳" : sowCoverage?.length ? "" : ""}</button>
           </div>
 
           <div style={{ flex: 1, overflowY: "auto", padding: "8px 0" }}>
@@ -2552,7 +2550,7 @@ function TzReviewStep({ projectType, rooms, tzByRoom, sowMissing, sowUnclear, de
                 {clientComments?.length > 0 && (
                   <div onClick={() => setActiveRoom("__comments__")}
                     style={{ padding: "7px 14px", cursor: "pointer", display: "flex", justifyContent: "space-between", alignItems: "center", background: activeRoom === "__comments__" ? "#f5f4f1" : "transparent", borderLeft: `3px solid ${activeRoom === "__comments__" ? "#1a1a1a" : "transparent"}`, marginTop: 8, borderTop: "1px solid #f0eeea" }}>
-                    <span style={{ fontSize: 11, color: "#666" }}>Коментарі</span>
+                    <span style={{ fontSize: 11, color: "#666" }}>Comments</span>
                     <span style={{ fontSize: 9, fontFamily: "monospace", color: "#bbb" }}>{clientComments.length}</span>
                   </div>
                 )}
@@ -2566,28 +2564,28 @@ function TzReviewStep({ projectType, rooms, tzByRoom, sowMissing, sowUnclear, de
                 {conflicts?.length > 0 && (
                   <div onClick={() => setActiveRoom("__conflicts__")}
                     style={{ padding: "7px 14px", cursor: "pointer", display: "flex", justifyContent: "space-between", alignItems: "center", background: activeRoom === "__conflicts__" ? "#fff5f5" : "transparent", borderLeft: `3px solid ${activeRoom === "__conflicts__" ? "#e74c3c" : "transparent"}`, marginTop: 4 }}>
-                    <span style={{ fontSize: 11, color: "#e74c3c" }}>⚡ Конфлікти</span>
+                    <span style={{ fontSize: 11, color: "#e74c3c" }}>⚡ Conflicts</span>
                     <span style={{ fontSize: 9, fontFamily: "monospace", color: "#e74c3c" }}>{conflicts.length}</span>
                   </div>
                 )}
                 {roadmap?.length > 0 && (
                   <div onClick={() => setActiveRoom("__roadmap__")}
                     style={{ padding: "7px 14px", cursor: "pointer", display: "flex", justifyContent: "space-between", alignItems: "center", background: activeRoom === "__roadmap__" ? "#f0fff4" : "transparent", borderLeft: `3px solid ${activeRoom === "__roadmap__" ? "#27ae60" : "transparent"}`, marginTop: 4 }}>
-                    <span style={{ fontSize: 11, color: "#27ae60" }}>▶ Роадмап</span>
+                    <span style={{ fontSize: 11, color: "#27ae60" }}>▶ Roadmap</span>
                     <span style={{ fontSize: 9, fontFamily: "monospace", color: "#27ae60" }}>{roadmap.length}</span>
                   </div>
                 )}
                 {allItems.length > 0 && (
                   <div onClick={() => setActiveRoom("__checklist__")}
                     style={{ padding: "7px 14px", cursor: "pointer", display: "flex", justifyContent: "space-between", alignItems: "center", background: activeRoom === "__checklist__" ? "#f5f0ff" : "transparent", borderLeft: `3px solid ${activeRoom === "__checklist__" ? "#8e44ad" : "transparent"}`, marginTop: 4 }}>
-                    <span style={{ fontSize: 11, color: "#8e44ad" }}>✓ Чеклист</span>
+                    <span style={{ fontSize: 11, color: "#8e44ad" }}>✓ Checklist</span>
                     <span style={{ fontSize: 9, fontFamily: "monospace", color: "#8e44ad" }}>{allItems.length}</span>
                   </div>
                 )}
                 {sources?.length > 0 && (
                   <div onClick={() => setActiveRoom("__sources__")}
                     style={{ padding: "7px 14px", cursor: "pointer", display: "flex", justifyContent: "space-between", alignItems: "center", background: activeRoom === "__sources__" ? "#f0f9ff" : "transparent", borderLeft: `3px solid ${activeRoom === "__sources__" ? "#2980b9" : "transparent"}`, marginTop: 4 }}>
-                    <span style={{ fontSize: 11, color: "#2980b9" }}>📋 Джерела</span>
+                    <span style={{ fontSize: 11, color: "#2980b9" }}>📋 Sources</span>
                     <span style={{ fontSize: 9, fontFamily: "monospace", color: "#2980b9" }}>{sources.length}</span>
                   </div>
                 )}
@@ -2613,7 +2611,7 @@ function TzReviewStep({ projectType, rooms, tzByRoom, sowMissing, sowUnclear, de
           </div>
         </div>
 
-        {/* Права панель — контент */}
+        {/* Right panel — content */}
         <div style={{ flex: 1, overflowY: "auto", padding: "20px 24px" }}>
           {viewMode === "stages" ? (
             (() => {
@@ -2624,11 +2622,11 @@ function TzReviewStep({ projectType, rooms, tzByRoom, sowMissing, sowUnclear, de
                 <div style={{ maxWidth: 720 }}>
                   <div style={{ display: "flex", alignItems: "baseline", gap: 10, marginBottom: 4 }}>
                     <div style={{ fontSize: 15, fontWeight: 700, color }}>{activeStage}</div>
-                    <div style={{ fontSize: 10, color: "#bbb", fontFamily: "monospace" }}>{stageItems.length} вимог</div>
+                    <div style={{ fontSize: 10, color: "#bbb", fontFamily: "monospace" }}>{stageItems.length} items</div>
                   </div>
                   <div style={{ fontSize: 10, color: "#aaa", fontFamily: "monospace", marginBottom: 20 }}>{STAGE_HINT[activeStage]}</div>
                   {stageItems.length === 0
-                    ? <div style={{ fontSize: 12, color: "#bbb", fontFamily: "monospace" }}>Немає вимог для цієї стадії</div>
+                    ? <div style={{ fontSize: 12, color: "#bbb", fontFamily: "monospace" }}>No items for this stage</div>
                     : Object.entries(byRoom).map(([room, items]) => (
                         <div key={room} style={{ marginBottom: 20 }}>
                           <div style={{ fontSize: 9, fontWeight: 700, fontFamily: "monospace", color: "#aaa", letterSpacing: "0.1em", marginBottom: 6, borderBottom: "1px solid #ece9e4", paddingBottom: 4 }}>{room.toUpperCase()}</div>
@@ -2641,7 +2639,7 @@ function TzReviewStep({ projectType, rooms, tzByRoom, sowMissing, sowUnclear, de
             })()
           ) : activeRoom === "__sow__" ? (
             <div style={{ maxWidth: 720 }}>
-              <div style={{ fontSize: 10, fontFamily: "monospace", color: "#bbb", letterSpacing: "0.1em", marginBottom: 16 }}>SOW ВАЛІДАЦІЯ</div>
+              <div style={{ fontSize: 10, fontFamily: "monospace", color: "#bbb", letterSpacing: "0.1em", marginBottom: 16 }}>SOW VALIDATION</div>
 
               {deliverySpec?.length > 0 && (
                 <div style={{ marginBottom: 24 }}>
@@ -2651,9 +2649,9 @@ function TzReviewStep({ projectType, rooms, tzByRoom, sowMissing, sowUnclear, de
                       <div key={i} style={{ display: "flex", alignItems: "center", padding: "7px 14px", background: i % 2 === 0 ? "#fafafa" : "#fff", borderBottom: i < deliverySpec.length - 1 ? "1px solid #f0f0f0" : "none" }}>
                         <span style={{ fontSize: 11, color: "#777", fontFamily: "monospace", width: 190, flexShrink: 0 }}>{item.key}</span>
                         <span style={{ fontSize: 12, color: item.source === "unclear" ? "#bbb" : "#222", flex: 1, fontFamily: "monospace" }}>{item.value || "—"}</span>
-                        {item.source === "brief"   && <span style={{ fontSize: 9, color: "#27ae60", fontFamily: "monospace", fontWeight: 700, whiteSpace: "nowrap" }}>✓ з брифу</span>}
-                        {item.source === "default" && <span style={{ fontSize: 9, color: "#aaa",    fontFamily: "monospace",               whiteSpace: "nowrap" }}>дефолт</span>}
-                        {item.source === "unclear" && <span style={{ fontSize: 9, color: "#e67e22", fontFamily: "monospace", fontWeight: 700, whiteSpace: "nowrap" }}>⚠ уточнити</span>}
+                        {item.source === "brief"   && <span style={{ fontSize: 9, color: "#27ae60", fontFamily: "monospace", fontWeight: 700, whiteSpace: "nowrap" }}>✓ from brief</span>}
+                        {item.source === "default" && <span style={{ fontSize: 9, color: "#aaa",    fontFamily: "monospace",               whiteSpace: "nowrap" }}>default</span>}
+                        {item.source === "unclear" && <span style={{ fontSize: 9, color: "#e67e22", fontFamily: "monospace", fontWeight: 700, whiteSpace: "nowrap" }}>⚠ to clarify</span>}
                       </div>
                     ))}
                   </div>
@@ -2662,27 +2660,27 @@ function TzReviewStep({ projectType, rooms, tzByRoom, sowMissing, sowUnclear, de
 
               {sowMissing?.length > 0 && (
                 <div style={{ marginBottom: 16 }}>
-                  <div style={{ fontSize: 10, fontWeight: 700, color: "#e74c3c", fontFamily: "monospace", marginBottom: 8 }}>НЕ ВИСТАЧАЄ / ПИТАННЯ ДО КЛІЄНТА</div>
+                  <div style={{ fontSize: 10, fontWeight: 700, color: "#e74c3c", fontFamily: "monospace", marginBottom: 8 }}>MISSING / CLIENT QUESTIONS</div>
                   {sowMissing.map((s, i) => <div key={i} style={{ fontSize: 12, color: "#444", padding: "5px 0 5px 12px", borderLeft: "3px solid #e74c3c", marginBottom: 4 }}>{s}</div>)}
                 </div>
               )}
               {sowUnclear?.length > 0 && (
                 <div>
-                  <div style={{ fontSize: 10, fontWeight: 700, color: "#e67e22", fontFamily: "monospace", marginBottom: 8 }}>НЕЗРОЗУМІЛО / НЕПОВНО</div>
+                  <div style={{ fontSize: 10, fontWeight: 700, color: "#e67e22", fontFamily: "monospace", marginBottom: 8 }}>UNCLEAR / INCOMPLETE</div>
                   {sowUnclear.map((s, i) => <div key={i} style={{ fontSize: 12, color: "#444", padding: "5px 0 5px 12px", borderLeft: "3px solid #e67e22", marginBottom: 4 }}>{s}</div>)}
                 </div>
               )}
             </div>
           ) : activeRoom === "__sources__" ? (
             <div style={{ maxWidth: 720 }}>
-              <div style={{ fontSize: 10, fontFamily: "monospace", color: "#bbb", letterSpacing: "0.1em", marginBottom: 4 }}>ДЖЕРЕЛА — ЩО ЗНАЙДЕНО В ФАЙЛАХ</div>
-              <div style={{ fontSize: 10, color: "#bbb", fontFamily: "monospace", marginBottom: 16 }}>Виберіть призначення кожного референсу</div>
+              <div style={{ fontSize: 10, fontFamily: "monospace", color: "#bbb", letterSpacing: "0.1em", marginBottom: 4 }}>SOURCES — WHAT WAS FOUND IN FILES</div>
+              <div style={{ fontSize: 10, color: "#bbb", fontFamily: "monospace", marginBottom: 16 }}>Select the purpose of each reference</div>
               {(sources || []).map((src, si) => (
                 <div key={si} style={{ marginBottom: 20 }}>
                   <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 8, paddingBottom: 6, borderBottom: "1px solid #ece9e4" }}>
                     <span style={{ fontSize: 13 }}>{SOURCE_FILE_ICO[src.fileType] || "📄"}</span>
                     <span style={{ fontSize: 11, fontWeight: 700, color: "#1a1a1a" }}>{src.file}</span>
-                    {src.page > 1 && <span style={{ fontSize: 9, fontFamily: "monospace", color: "#bbb" }}>стор. {src.page}</span>}
+                    {src.page > 1 && <span style={{ fontSize: 9, fontFamily: "monospace", color: "#bbb" }}>p. {src.page}</span>}
                   </div>
                   {(src.found || []).map((item, ii) => {
                     const currentTag = sourceTags?.[item.id] || item.type;
@@ -2707,8 +2705,8 @@ function TzReviewStep({ projectType, rooms, tzByRoom, sowMissing, sowUnclear, de
             </div>
           ) : activeRoom === "__checklist__" ? (
             <div style={{ maxWidth: 720 }}>
-              <div style={{ fontSize: 10, fontFamily: "monospace", color: "#bbb", letterSpacing: "0.1em", marginBottom: 4 }}>ЧЕКЛИСТ ЗДАЧІ</div>
-              <div style={{ fontSize: 10, color: "#bbb", fontFamily: "monospace", marginBottom: 16 }}>Всі вимоги клієнта — для звірки результату перед здачею</div>
+              <div style={{ fontSize: 10, fontFamily: "monospace", color: "#bbb", letterSpacing: "0.1em", marginBottom: 4 }}>DELIVERY CHECKLIST</div>
+              <div style={{ fontSize: 10, color: "#bbb", fontFamily: "monospace", marginBottom: 16 }}>All client requirements — for final review before delivery</div>
               {PRODUCTION_STAGES.map(stage => {
                 const stageItems = allItems.filter(it => it.stage === stage);
                 if (!stageItems.length) return null;
@@ -2740,7 +2738,7 @@ function TzReviewStep({ projectType, rooms, tzByRoom, sowMissing, sowUnclear, de
               })}
               {allItems.filter(it => !it.stage).length > 0 && (
                 <div style={{ marginBottom: 18 }}>
-                  <div style={{ fontSize: 9, fontWeight: 700, fontFamily: "monospace", color: "#bbb", letterSpacing: "0.1em", marginBottom: 8, borderBottom: "1px solid #eee", paddingBottom: 4 }}>БЕЗ СТАДІЇ</div>
+                  <div style={{ fontSize: 9, fontWeight: 700, fontFamily: "monospace", color: "#bbb", letterSpacing: "0.1em", marginBottom: 8, borderBottom: "1px solid #eee", paddingBottom: 4 }}>NO STAGE</div>
                   {allItems.filter(it => !it.stage).map(item => (
                     <div key={item.id} style={{ display: "flex", alignItems: "flex-start", gap: 10, padding: "5px 0", borderBottom: "1px solid #f2f0ec" }}>
                       <div style={{ width: 14, height: 14, borderRadius: 3, border: "1.5px solid #ccc", flexShrink: 0, marginTop: 2 }} />
@@ -2752,7 +2750,7 @@ function TzReviewStep({ projectType, rooms, tzByRoom, sowMissing, sowUnclear, de
             </div>
           ) : activeRoom === "__conflicts__" ? (
             <div style={{ maxWidth: 720 }}>
-              <div style={{ fontSize: 10, fontFamily: "monospace", color: "#bbb", letterSpacing: "0.1em", marginBottom: 12 }}>КОНФЛІКТИ МІЖ ФАЙЛАМИ</div>
+              <div style={{ fontSize: 10, fontFamily: "monospace", color: "#bbb", letterSpacing: "0.1em", marginBottom: 12 }}>FILE CONFLICTS</div>
               {(conflicts || []).map((c, i) => (
                 <div key={i} style={{ marginBottom: 10, padding: "10px 14px", background: "#fff5f5", border: "1px solid #f5c6c6", borderLeft: "3px solid #e74c3c", borderRadius: 6 }}>
                   <div style={{ fontSize: 12, color: "#333", lineHeight: 1.6 }}>{c}</div>
@@ -2761,7 +2759,7 @@ function TzReviewStep({ projectType, rooms, tzByRoom, sowMissing, sowUnclear, de
             </div>
           ) : activeRoom === "__roadmap__" ? (
             <div style={{ maxWidth: 720 }}>
-              <div style={{ fontSize: 10, fontFamily: "monospace", color: "#bbb", letterSpacing: "0.1em", marginBottom: 16 }}>РОАДМАП ПРОЕКТУ</div>
+              <div style={{ fontSize: 10, fontFamily: "monospace", color: "#bbb", letterSpacing: "0.1em", marginBottom: 16 }}>PROJECT ROADMAP</div>
               {(roadmap || []).sort((a, b) => (a.order || 0) - (b.order || 0)).map((step, i) => (
                 <div key={i} style={{ marginBottom: 20 }}>
                   <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 6 }}>
@@ -2784,7 +2782,7 @@ function TzReviewStep({ projectType, rooms, tzByRoom, sowMissing, sowUnclear, de
             </div>
           ) : activeRoom === "__comments__" ? (
             <div style={{ maxWidth: 720 }}>
-              <div style={{ fontSize: 10, fontFamily: "monospace", color: "#bbb", letterSpacing: "0.1em", marginBottom: 12 }}>КОМЕНТАРІ КЛІЄНТА</div>
+              <div style={{ fontSize: 10, fontFamily: "monospace", color: "#bbb", letterSpacing: "0.1em", marginBottom: 12 }}>CLIENT COMMENTS</div>
               {Object.entries((clientComments || []).reduce((acc, c) => { (acc[c.page] = acc[c.page] || []).push(c.text); return acc; }, {})).map(([page, texts], i) => (
                 <div key={i} style={{ marginBottom: 12 }}>
                   <div style={{ fontSize: 9, fontFamily: "monospace", color: "#bbb", marginBottom: 4 }}>{page}</div>
@@ -2796,7 +2794,7 @@ function TzReviewStep({ projectType, rooms, tzByRoom, sowMissing, sowUnclear, de
             <div style={{ maxWidth: 720 }}>
               <div style={{ fontSize: 13, fontWeight: 600, color: "#1a1a1a", marginBottom: 16 }}>{activeRoom}</div>
               {Object.keys(roomData).length === 0
-                ? <div style={{ fontSize: 12, color: "#bbb", fontFamily: "monospace" }}>Немає вимог для цього приміщення</div>
+                ? <div style={{ fontSize: 12, color: "#bbb", fontFamily: "monospace" }}>No items for this room</div>
                 : Object.entries(roomData).map(([cat, items]) => (
                     <div key={cat} style={{ marginBottom: 16 }}>
                       <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 6 }}>
@@ -2899,31 +2897,31 @@ export default function App() {
       )
     ).join("\n");
 
-    const prompt = `Ти — асистент що перевіряє покриття SOW-чеклисту по розібраним вимогам проекту.
+    const prompt = `You are an assistant checking SOW checklist coverage against parsed project requirements.
 
-Тип проекту: ${projectType}
+Project type: ${projectType}
 
-SOW-чеклист (${items.length} пунктів):
+SOW checklist (${items.length} items):
 ${items.map((item, i) => `${i + 1}. ${typeof item === "string" ? item : item.text}`).join("\n")}
 
-Розібрані вимоги проекту:
-${tzText || "(немає даних)"}
+Parsed project requirements:
+${tzText || "(no data)"}
 
-Для КОЖНОГО пункту чеклисту визнач:
-- status: "found" — інформація є і достатня
-- status: "partial" — інформація є але неповна або часткова
-- status: "missing" — інформація повністю відсутня
-- found: коротко що знайдено (1 рядок), або "" якщо відсутнє
-- source: "Назва файлу стор.N" або "" якщо невідомо
+For EACH checklist item determine:
+- status: "found" — information is present and sufficient
+- status: "partial" — information is present but incomplete or partial
+- status: "missing" — information is completely absent
+- found: brief description of what was found (1 line), or "" if absent
+- source: "filename p.N" or "" if unknown
 
-ВІДПОВІДАЙ ТІЛЬКИ JSON (масив рівно ${items.length} елементів, по одному на кожний пункт чеклисту):
+RESPOND ONLY WITH JSON (array of exactly ${items.length} elements, one per checklist item):
 {"sow_coverage":[{"item":"...","status":"found","found":"...","source":"..."}]}`;
 
     setBuildingCoverage(true);
     try {
       const result = await callAPI([{ type: "text", text: prompt }], 2, key);
       setTzSowCoverage(result.sow_coverage || []);
-    } catch { /* silent — coverage tab просто буде порожнім */ }
+    } catch { /* silent — coverage tab will simply be empty */ }
     setBuildingCoverage(false);
   }
 
@@ -2960,25 +2958,25 @@ Return ONLY valid JSON in exactly the same structure with translated values:
 
   const readyFiles = fl => (fl.files || []).filter(f => !f._loading && !f._error && f._done);
 
-  // Збираємо індекс для img_ref: { preview, full, filename, pageNum, fileLabel }
+  // Build index for img_ref: { preview, full, filename, pageNum, fileLabel }
   const buildImgIndex = () => {
     const idx = {};
     const catCounters = {};
     readyFiles(allFilesList).forEach((f) => {
-      const cat = f._category || "Файл";
+      const cat = f._category || "File";
       catCounters[cat] = (catCounters[cat] || 0) + 1;
       const fileLabel = `${cat} ${catCounters[cat]}`;
       (f.pages || []).filter(p => p._selected !== false).forEach((pg, pi) => {
         if (pg.preview || pg.b64) {
           const entry = { preview: pg.preview, full: pg.b64 ? `data:image/jpeg;base64,${pg.b64}` : pg.preview, filename: f.filename, pageNum: pi + 1, fileLabel, category: cat };
-          const key = pi === 0 ? fileLabel.toLowerCase() : `${fileLabel.toLowerCase()} стор.${pi + 1}`;
+          const key = pi === 0 ? fileLabel.toLowerCase() : `${fileLabel.toLowerCase()} p.${pi + 1}`;
           idx[key] = entry;
           // Also index without trailing number (e.g. "edison vanity" → first page of that category)
           const keyNoNum = cat.toLowerCase();
           if (!idx[keyNoNum]) idx[keyNoNum] = entry;
           if (pi > 0) {
-            // "cat стор.N" without the counter number
-            const keyNoNumPage = `${cat.toLowerCase()} стор.${pi + 1}`;
+            // "cat p.N" without the counter number
+            const keyNoNumPage = `${cat.toLowerCase()} p.${pi + 1}`;
             if (!idx[keyNoNumPage]) idx[keyNoNumPage] = entry;
           }
         }
@@ -2988,8 +2986,8 @@ Return ONLY valid JSON in exactly the same structure with translated values:
   };
 
   // Resolve img_ref from Claude against the index
-  // New format: { file: "СТИЛЬ / МУДБОРД 1", page: 2 }
-  // Legacy fallback: plain string "СТИЛЬ / МУДБОРД 1 стор.2"
+  // New format: { file: "STYLE / MOODBOARD 1", page: 2 }
+  // Legacy fallback: plain string "STYLE / MOODBOARD 1 p.2"
   const resolveImgRef = (imgRef, idx) => {
     if (!imgRef) return null;
     const norm = s => s.replace(/\[.*?\]/g, '').replace(/\s+/g, ' ').trim().toLowerCase();
@@ -2999,34 +2997,34 @@ Return ONLY valid JSON in exactly the same structure with translated values:
       fileKey = norm(imgRef.file);
       page = imgRef.page || 1;
     } else {
-      // Legacy: parse "FILE стор.N" string
+      // Legacy: parse "FILE p.N" string
       const s = norm(String(imgRef));
-      const m = s.match(/^(.*?)\s+стор\.(\d+)$/);
+      const m = s.match(/^(.*?)\s+p\.(\d+)$/);
       fileKey = m ? m[1] : s;
       page = m ? parseInt(m[2]) : 1;
     }
 
     // Build exact key
-    const key = page > 1 ? `${fileKey} стор.${page}` : fileKey;
+    const key = page > 1 ? `${fileKey} p.${page}` : fileKey;
     if (idx[key]) return idx[key];
 
     // Fuzzy: find index entry whose file part matches fileKey
     const found = Object.keys(idx).find(k => {
-      const kFile = k.replace(/\s+стор\.\d+$/, '');
+      const kFile = k.replace(/\s+p\.\d+$/, '');
       return kFile === fileKey || kFile.startsWith(fileKey) || fileKey.startsWith(kFile);
     });
     return found ? idx[found] : null;
   };
 
   async function parseTz() {
-    if (!apiKey.trim()) { setErr("Введіть API ключ Anthropic"); return; }
+    if (!apiKey.trim()) { setErr("Enter Anthropic API key"); return; }
     const allFiles = readyFiles(allFilesList);
-    if (!briefText.trim() && allFiles.length === 0) { setErr("Завантажте матеріали або введіть текст ТЗ"); return; }
+    if (!briefText.trim() && allFiles.length === 0) { setErr("Upload files or enter brief text"); return; }
 
     // Warn if some files are still loading
     const stillLoading = (allFilesList.files || []).filter(f => f._loading);
     if (stillLoading.length > 0) {
-      setErr(`Почекайте — ще обробляється ${stillLoading.length} файл${stillLoading.length > 1 ? "и" : ""}: ${stillLoading.map(f => f.filename).join(", ")}`);
+      setErr(`Please wait — still processing ${stillLoading.length} file${stillLoading.length > 1 ? "s" : ""}: ${stillLoading.map(f => f.filename).join(", ")}`);
       return;
     }
 
@@ -3035,7 +3033,7 @@ Return ONLY valid JSON in exactly the same structure with translated values:
     // Number files within each category
     const catCounters = {};
     const labeledFiles = allFiles.map(f => {
-      const cat = f._category || "Файл";
+      const cat = f._category || "File";
       catCounters[cat] = (catCounters[cat] || 0) + 1;
       return { ...f, _label: `${cat.toUpperCase()} ${catCounters[cat]}` };
     });
@@ -3045,14 +3043,14 @@ Return ONLY valid JSON in exactly the same structure with translated values:
     try {
       processedFiles = await preProcessLargeFiles(labeledFiles, apiKey, setParseStatus);
     } catch (e) {
-      setErr(`Помилка попередньої обробки: ${e.message}`);
+      setErr(`Pre-processing error: ${e.message}`);
       setParsing(false); setParseStatus("");
       return;
     }
-    setParseStatus("Відправляю до Claude…");
+    setParseStatus("Sending to Claude…");
 
     // File manifest for the prompt
-    const manifest = processedFiles.map(f => `  • ${f._label} [${f.ext || f.type?.toUpperCase()}]: ${f.filename}${f._preExtracted ? ` (${f._totalPages} стор., попередньо оброблено)` : ""}${f._confidence === "low" ? " (?)" : ""}`).join("\n");
+    const manifest = processedFiles.map(f => `  • ${f._label} [${f.ext || f.type?.toUpperCase()}]: ${f.filename}${f._preExtracted ? ` (${f._totalPages} pages, pre-extracted)` : ""}${f._confidence === "low" ? " (?)" : ""}`).join("\n");
 
     const imgIndex = buildImgIndex();
 
@@ -3064,123 +3062,123 @@ Return ONLY valid JSON in exactly the same structure with translated values:
       .map(([type, { items, defaults }]) => {
         let text = `${type}:\n${items.map(i => typeof i === "string" ? `  ${i}` : `  - [${i.cat}] ${i.text}`).join("\n")}`;
         if (defaults && Object.keys(defaults).length > 0) {
-          text += `\n  Дефолти (якщо клієнт не вказав):\n${Object.entries(defaults).map(([k, v]) => `    • ${k}: ${v}`).join("\n")}`;
+          text += `\n  Defaults (if client did not specify):\n${Object.entries(defaults).map(([k, v]) => `    • ${k}: ${v}`).join("\n")}`;
         }
         return text;
       })
       .join("\n\n");
-    const parts = [{ type: "text", text: `Ти — досвідчений 3D-художник і ПМ, який аналізує вхідні матеріали ПЕРЕД стартом проекту. Твоя ціль — не просто витягнути вимоги, а підготувати повний роадмап і чеклист здачі: щоб команда (візуалізатор + АД + ПМ) могла звірити результат з тим що просив клієнт.
+    const parts = [{ type: "text", text: `You are an experienced 3D artist and PM analyzing incoming brief materials BEFORE project start. Your goal is not just to extract requirements, but to prepare a complete roadmap and delivery checklist so the team (visualizer + AD + PM) can verify the result against what the client requested.
 
-МОВА: вхідні матеріали можуть бути будь-якою мовою — українська, російська, суржик, англійська, змішана. Розпізнавай вимоги незалежно від мови. Відповідай завжди ТІЛЬКИ українською.
+LANGUAGE: input materials may be in any language — Ukrainian, Russian, English, mixed. Recognize requirements regardless of language. Always respond ONLY in English.
 
-ПРИНЦИП РОБОТИ:
-1. Читай ВСІ файли разом, не по черзі — зіставляй бриф з кресленнями, референси з коментарями, специфікації між собою
-2. Думай як художник: "що мені треба зробити щоб запустити цей проект і не переробляти?"
-3. Витягуй ВСІ посилання (URL) з будь-яких джерел — меблі, каталоги, Pinterest, Behance, бренди, кольори, мапи — і прив'язуй до конкретної вимоги
-4. Фіксуй суперечності між файлами — якщо бриф суперечить кресленню або референс не відповідає текстовому опису
+WORKING PRINCIPLES:
+1. Read ALL files together, not one by one — cross-reference brief with drawings, references with comments, specs with each other
+2. Think like an artist: "what do I need to do to start this project without rework?"
+3. Extract ALL links (URLs) from any source — furniture, catalogs, Pinterest, Behance, brands, colors, maps — and attach to the specific requirement
+4. Flag contradictions between files — if the brief conflicts with a drawing, or a reference doesn't match the text description
 
-DWG/DXF КРЕСЛЕННЯ: якщо є DWG або DXF — обов'язково:
-- Витягни назви приміщень з "ПІДПИСИ" та "ШАРИ" — вони формують список rooms
-- Витягни розміри — додавай у "Креслення та планування" з img_ref на цей файл
-- Зіставляй з брифом: розбіжності → conflicts та sow_unclear
-- Приміщення на кресленні без вимог → sow_missing
+DWG/DXF DRAWINGS: if DWG or DXF is present — mandatory:
+- Extract room names from "LABELS" and "LAYERS" — they form the rooms list
+- Extract dimensions — add to "Drawings" category with img_ref pointing to this file
+- Cross-check with brief: discrepancies → conflicts and sow_unclear
+- Rooms in drawing with no requirements → sow_missing
 
-ВХІДНІ ФАЙЛИ:
-${manifest || "(немає файлів)"}
+INPUT FILES:
+${manifest || "(no files)"}
 
-ТЗ ТЕКСТ:
-${briefText.trim() || "(дивись прикріплені матеріали)"}
+BRIEF TEXT:
+${briefText.trim() || "(see attached materials)"}
 
-ВАЖЛИВО: для кожної сторінки надано "витягнутий текст" — використовуй його як першочергове джерело для розмірів, назв, специфікацій та чисел. Зображення доповнює текст.
+IMPORTANT: for each page, "extracted text" is provided — use it as the primary source for dimensions, names, specs and numbers. The image supplements the text.
 
-ЗАВДАННЯ 1 — project_type:
+TASK 1 — project_type:
 ${selectedTypes.length > 0
-  ? `Тип(и) вже обрано ПМом: ${selectedTypes.join(", ")}. Використовуй саме ці типи — не змінюй. Якщо обрано декілька, поверни перший як project_type.`
-  : `Визнач один варіант: ${sowTypes}`}
+  ? `Type(s) already selected by PM: ${selectedTypes.join(", ")}. Use exactly these types — do not change. If multiple selected, return the first as project_type.`
+  : `Determine one option: ${sowTypes}`}
 
-ЗАВДАННЯ 2 — project_annotation:
-Стислий опис (3-5 речень): тип простору, площа/кількість приміщень, стиль, ключові матеріали, що надано.
+TASK 2 — project_annotation:
+Brief description (3-5 sentences): space type, area/number of rooms, style, key materials, what was provided.
 
-ЗАВДАННЯ 3 — rooms:
-Масив приміщень/зон. Загальні вимоги (стиль, освітлення, камери, дедлайн) — у "Загальне". Якщо приміщення не визначені — тільки ["Загальне"].
+TASK 3 — rooms:
+Array of rooms/zones. General requirements (style, lighting, cameras, deadline) — put in "General". If rooms are not defined — only ["General"].
 
-ЗАВДАННЯ 4 — tz_by_room:
-КРИТИЧНО: знайди ВСІ вимоги, розбий по приміщеннях та категоріях.
-Структура: { "Приміщення": { "Категорія": [ {id, text, quote, stage, source, img_ref, links} ] } }
-- text = ПОВНИЙ опис: назва + матеріал + колір + відділка + розмір + марка
-- АТОМАРНІСТЬ: один item = одна вимога. Якщо речення містить кілька об'єктів ("диван + крісло + стіл") — розбивай на окремі items
-- quote = дослівна цитата з вхідних матеріалів, або null
-- stage = "Моделінг" | "Текстуринг" | "Світло" | "Камери" | "Пост-продакшн" | "Видача"
-- img_ref: { "file": "мітка файлу", "page": N } або null  (напр. {"file":"СТИЛЬ / МУДБОРД 1","page":2}; page=1 якщо перша сторінка)
-- source: назва категорії вхідного файлу
-- links: масив всіх URL пов'язаних з цією вимогою — [ { url, label, type } ] де type: "furniture"|"material"|"reference"|"color"|"catalog"|"product"|"map"|"other". Якщо посилань немає — []
-- Категорії залежать від типу проекту:
-  - Silo: "Продукт", "Ракурси та подача", "Технічні вимоги"
-  - Lifestyle: "Продукт", "Матеріали та текстури", "Сцена", "Технічні вимоги"
-  - Floor Rendering: "Специфікація поверхні", "Сцена", "Технічні вимоги"
-  - Mattress Rendering: "Продукт", "Матеріали та текстури", "Silo", "Lifestyle", "Технічні вимоги"
-  - Rugs Rendering: "Ракурси та подача", "Технічні вимоги"
-  - 3D Modeling: "Параметри моделінгу", "AR-специфікація", "Референс продукту", "Матеріали та текстури"
-  - Всі інші типи: "Референси", "Матеріали та оздоблення", "Меблі та предмети", "Креслення", "Технічні вимоги", "Вимоги клієнта"
-- ВАЖЛИВО: в SOW-шаблоні кожен пункт має мітку [кат]. Використовуй саме цю категорію для відповідного item. Якщо вимога не є частиною шаблону — обери найближчу категорію із дозволених для цього типу проекту.
+TASK 4 — tz_by_room:
+CRITICAL: find ALL requirements, break down by room and category.
+Structure: { "Room": { "Category": [ {id, text, quote, stage, source, img_ref, links} ] } }
+- text = FULL description: name + material + color + finish + size + brand/model
+- ATOMICITY: one item = one requirement. If a sentence contains multiple objects ("sofa + armchair + table") — split into separate items
+- quote = verbatim quote from input materials, or null
+- stage = "Modeling" | "Texturing" | "Lighting" | "Cameras" | "Post-production" | "Delivery"
+- img_ref: { "file": "file label", "page": N } or null  (e.g. {"file":"STYLE / MOODBOARD 1","page":2}; page=1 if first page)
+- source: input file category label
+- links: array of all URLs related to this requirement — [ { url, label, type } ] where type: "furniture"|"material"|"reference"|"color"|"catalog"|"product"|"map"|"other". If no links — []
+- Categories depend on project type:
+  - Silo: "Product", "Angles & Delivery", "Technical Requirements"
+  - Lifestyle: "Product", "Materials & Textures", "Scene", "Technical Requirements"
+  - Floor Rendering: "Surface Specification", "Scene", "Technical Requirements"
+  - Mattress Rendering: "Product", "Materials & Textures", "Silo", "Lifestyle", "Technical Requirements"
+  - Rugs Rendering: "Angles & Delivery", "Technical Requirements"
+  - 3D Modeling: "Modeling Parameters", "AR Specification", "Product Reference", "Materials & Textures"
+  - All other types: "References", "Materials & Finishes", "Furniture & Objects", "Drawings", "Technical Requirements", "Client Requirements"
+- IMPORTANT: in the SOW template each item has a [cat] tag. Use exactly that category for the corresponding item. If the requirement is not part of the template — choose the closest allowed category for this project type.
 
-ЗАВДАННЯ 5 — conflicts:
-Суперечності між вхідними файлами. Кожен рядок: "Конфлікт: [що суперечить чому]. Джерело A: [файл/цитата]. Джерело B: [файл/цитата]. Питання: [що треба уточнити]"
-Приклад: "Конфлікт: колір стін вітальні. Джерело A: бриф — 'стіни темно-сірі'. Джерело B: мудборд стор.2 — референс зі світлими стінами. Питання: який варіант пріоритетний?"
+TASK 5 — conflicts:
+Contradictions between input files. Each entry: "Conflict: [what contradicts what]. Source A: [file/quote]. Source B: [file/quote]. Question: [what needs clarification]"
+Example: "Conflict: living room wall color. Source A: brief — 'walls dark grey'. Source B: moodboard p.2 — reference with light walls. Question: which version is priority?"
 
-ЗАВДАННЯ 6 — roadmap:
-Впорядкований план роботи по виробничих стадіях. Для кожної стадії — конкретні задачі в порядку виконання з урахуванням залежностей між ними.
-Структура: [ { stage, order, notes, tasks: ["задача 1", "задача 2"] } ]
-- stage = одна з: "Моделінг" | "Текстуринг" | "Світло" | "Камери" | "Пост-продакшн" | "Видача"
-- order = порядковий номер (1, 2, 3...)
-- notes = важливий коментар для цієї стадії (залежності, ризики, що треба уточнити до початку)
-- tasks = конкретні дії для виконання
+TASK 6 — roadmap:
+Ordered work plan by production stages. For each stage — specific tasks in execution order accounting for dependencies.
+Structure: [ { stage, order, notes, tasks: ["task 1", "task 2"] } ]
+- stage = one of: "Modeling" | "Texturing" | "Lighting" | "Cameras" | "Post-production" | "Delivery"
+- order = sequence number (1, 2, 3...)
+- notes = important comment for this stage (dependencies, risks, what to clarify before starting)
+- tasks = specific actions to perform
 
-ЗАВДАННЯ 7 — sow_missing та sow_unclear:
-Звір вхідні матеріали з повним SOW-шаблоном для визначеного типу проекту (project_type з Завдання 1).
-Шаблони по типах:
+TASK 7 — sow_missing and sow_unclear:
+Cross-check input materials against the full SOW template for the determined project type (project_type from Task 1).
+Templates by type:
 ${sowTemplatesText}
 
-- sow_missing: пункти шаблону яких ПОВНІСТЮ немає у вхідних матеріалах.
-  - Якщо для пункту є дефолт у шаблоні → формат: "Назва пункту — не вказано. Буде: [дефолт]. Підтвердіть або надішліть заміну"
-  - Якщо дефолту немає → формат: "Назва пункту — що саме потрібно надати клієнту"
-- sow_unclear: пункти шаблону які є але неповні або незрозумілі. Формат: "Назва пункту — знайдено: [що є]. Неясно: [конкретне питання]"
+- sow_missing: template items that are COMPLETELY absent from input materials.
+  - If the item has a default in the template → format: "Item name — not specified. Will use: [default]. Confirm or send replacement"
+  - If no default → format: "Item name — what the client needs to provide"
+- sow_unclear: template items that are present but incomplete or unclear. Format: "Item name — found: [what exists]. Unclear: [specific question]"
 
-ЗАВДАННЯ 8 — delivery_spec:
-Зістав вхідні матеріали з УСІМА пунктами SOW-шаблону для визначеного типу проекту. Для КОЖНОГО пункту шаблону (крім рядків що починаються з "---") створи запис:
-- Якщо клієнт надав цей параметр → source: "brief", value: коротке значення з матеріалів (1-2 слова або фраза)
-- Якщо не надав але є дефолт у шаблоні → source: "default", value: дефолт зі шаблону
-- Якщо не надав і дефолту немає → source: "unclear", value: "—"
-ВАЖЛИВО: key = тільки текст пункту шаблону, БЕЗ префіксу [категорія]. Наприклад: "Ліміт полігонів", НЕ "[Технічні вимоги] Ліміт полігонів". Текст key має точно відповідати тексту пункту шаблону — не скорочуй і не перефразовуй.
-Структура: [{"key": "Роздільність", "value": "4K", "source": "brief"}]
-Покрий ВСІ пункти шаблону — від креслень до дедлайну.
+TASK 8 — delivery_spec:
+Match input materials against ALL items in the SOW template for the determined project type. For EACH template item (except lines starting with "---") create a record:
+- If client provided this parameter → source: "brief", value: short value from materials (1-2 words or phrase)
+- If not provided but template has a default → source: "default", value: default from template
+- If not provided and no default → source: "unclear", value: "—"
+IMPORTANT: key = only the template item text, WITHOUT the [category] prefix. For example: "Resolution", NOT "[Technical Requirements] Resolution". The key text must exactly match the template item text — do not shorten or rephrase.
+Structure: [{"key": "Resolution", "value": "4K", "source": "brief"}]
+Cover ALL template items — from drawings to deadline.
 
-ЗАВДАННЯ 9 — sources:
-Посторінковий журнал джерел — що знайдено в кожному файлі/сторінці.
-Структура: [ { file: "мітка файлу", page: N, found: [ { id, type, description } ] } ]
-- file: мітка файлу (напр. "МУДБОРД 1", "КРЕСЛЕННЯ", "ТЗ ТЕКСТОМ")
-- page: номер сторінки (1 якщо одна)
-- found: список знайденого на цій сторінці
+TASK 9 — sources:
+Page-by-page source log — what was found in each file/page.
+Structure: [ { file: "file label", page: N, found: [ { id, type, description } ] } ]
+- file: file label (e.g. "MOODBOARD 1", "DRAWINGS", "BRIEF TEXT")
+- page: page number (1 if single page)
+- found: list of what was found on this page
 - type: "furniture" | "material" | "lighting" | "style_ref" | "time_of_day" | "weather" | "render_quality" | "camera" | "dimensions" | "logo" | "comment" | "other"
-- description: коротко що саме (назва продукту, бренд, опис)
-Включай ВСЕ що є на сторінці — меблі, матеріали, референси стилю, час доби, погоду, якість рендеру, ракурси, розміри.
+- description: brief description of what exactly (product name, brand, description)
+Include EVERYTHING on the page — furniture, materials, style references, time of day, weather, render quality, angles, dimensions.
 
-ЗАВДАННЯ 10 — client_comments:
-ВСІ коментарі клієнта — в рамках, нотатках, стрілках.
-{ page: "мітка файлу", text: "дослівно" }
+TASK 10 — client_comments:
+ALL client comments — in frames, notes, arrows.
+{ page: "file label", text: "verbatim" }
 
-ВІДПОВІДАЙ ТІЛЬКИ JSON:
-{"project_type":"...","project_annotation":"...","rooms":["Загальне","Вітальня"],"tz_by_room":{"Загальне":{"Тип освітлення":[{"id":"tz1","text":"Тепле освітлення 2700K, торшер біля дивану","quote":"тепле освітлення, торшер біля дивану","stage":"Світло","source":"ТЗ ТЕКСТОМ","img_ref":null,"links":[]}]},"Вітальня":{"Меблі та моделі":[{"id":"tz2","text":"Диван — Minotti Lawrence, сірий велюр","quote":"диван Minotti Lawrence сірий","stage":"Моделінг","source":"МАТЕРІАЛИ 1","img_ref":{"file":"МАТЕРІАЛИ 1","page":2},"links":[{"url":"https://minotti.com/...","label":"Minotti Lawrence","type":"furniture"}]}]}},"conflicts":["Конфлікт: колір стін вітальні. Джерело A: бриф — 'темно-сірі стіни'. Джерело B: мудборд стор.2 — світлий інтер'єр. Питання: який варіант пріоритетний?"],"roadmap":[{"stage":"Моделінг","order":1,"notes":"Перед стартом уточнити план у клієнта — є розбіжність між кресленням і брифом","tasks":["Змоделювати планування за DWG","Базові меблі по референсах"]}],"sources":[{"file":"МУДБОРД 1","page":2,"found":[{"id":"src1","type":"furniture","description":"Диван Minotti Lawrence, сірий велюр"},{"id":"src2","type":"style_ref","description":"Скандинавський стиль, натуральні матеріали"},{"id":"src3","type":"lighting","description":"Торшер Flos IC F підлоговий"}]},{"file":"КРЕСЛЕННЯ","page":1,"found":[{"id":"src4","type":"dimensions","description":"Вітальня 6×4м, спальня 4×3.5м"},{"id":"src5","type":"camera","description":"Ракурс з кута вітальні на зону відпочинку"}]}],"sow_missing":["Час доби — не вказано. Буде: день. Підтвердіть або надішліть заміну","Меблі — потрібно надати посилання або бренд для кожної позиції"],"sow_unclear":["Колір стін — знайдено: 'замінити зелений'. Неясно: на який колір — потрібен RAL/HEX"],"delivery_spec":[{"key":"Роздільність","value":"4K","source":"brief"},{"key":"DPI","value":"72 dpi","source":"default"},{"key":"Формат","value":"JPEG","source":"default"},{"key":"Час доби","value":"вечір","source":"brief"},{"key":"Кількість зображень","value":"—","source":"unclear"}],"client_comments":[{"page":"ТЗ ТЕКСТОМ 1","text":"..."}]}` }];
+RESPOND ONLY WITH JSON:
+{"project_type":"...","project_annotation":"...","rooms":["General","Living Room"],"tz_by_room":{"General":{"Lighting":[{"id":"tz1","text":"Warm lighting 2700K, floor lamp near sofa","quote":"warm lighting, floor lamp near sofa","stage":"Lighting","source":"BRIEF TEXT","img_ref":null,"links":[]}]},"Living Room":{"Furniture & Objects":[{"id":"tz2","text":"Sofa — Minotti Lawrence, grey velvet","quote":"sofa Minotti Lawrence grey","stage":"Modeling","source":"MATERIALS 1","img_ref":{"file":"MATERIALS 1","page":2},"links":[{"url":"https://minotti.com/...","label":"Minotti Lawrence","type":"furniture"}]}]}},"conflicts":["Conflict: living room wall color. Source A: brief — 'dark grey walls'. Source B: moodboard p.2 — light interior. Question: which version is priority?"],"roadmap":[{"stage":"Modeling","order":1,"notes":"Clarify floor plan with client before start — discrepancy between drawing and brief","tasks":["Model layout from DWG","Base furniture from references"]}],"sources":[{"file":"MOODBOARD 1","page":2,"found":[{"id":"src1","type":"furniture","description":"Sofa Minotti Lawrence, grey velvet"},{"id":"src2","type":"style_ref","description":"Scandinavian style, natural materials"},{"id":"src3","type":"lighting","description":"Flos IC F floor lamp"}]},{"file":"DRAWINGS","page":1,"found":[{"id":"src4","type":"dimensions","description":"Living room 6×4m, bedroom 4×3.5m"},{"id":"src5","type":"camera","description":"Angle from living room corner to seating area"}]}],"sow_missing":["Time of day — not specified. Will use: day. Confirm or send replacement","Furniture — links or brand required for each item"],"sow_unclear":["Wall color — found: 'replace green'. Unclear: what color — need RAL/HEX"],"delivery_spec":[{"key":"Resolution","value":"4K","source":"brief"},{"key":"DPI","value":"72","source":"default"},{"key":"File Format","value":"JPEG","source":"default"},{"key":"Time of day","value":"evening","source":"brief"},{"key":"Number of images","value":"—","source":"unclear"}],"client_comments":[{"page":"BRIEF TEXT 1","text":"..."}]}` }];
 
-    parts.push(...filesToParts(processedFiles, "ФАЙЛ"));
+    parts.push(...filesToParts(processedFiles, "FILE"));
 
     try {
       const result = await callAPI(parts, 2, apiKey);
 
       // Validate top-level structure
-      if (!result || typeof result !== 'object') throw new Error("Відповідь не є об'єктом");
+      if (!result || typeof result !== 'object') throw new Error("Response is not an object");
       if (!result.tz_by_room || typeof result.tz_by_room !== 'object' || Array.isArray(result.tz_by_room))
-        throw new Error("tz_by_room відсутній або має невірний тип");
+        throw new Error("tz_by_room is missing or has wrong type");
 
       let counter = 1;
       // Normalize tz_by_room: attach imgPreview and ensure ids
@@ -3201,7 +3199,7 @@ ${sowTemplatesText}
             imgRef: item.img_ref ? resolveImgRef(item.img_ref, imgIndex) : null,
             imgRefLabel: item.img_ref
               ? (typeof item.img_ref === 'object' && item.img_ref.file
-                  ? `${item.img_ref.file}${item.img_ref.page > 1 ? ` стор.${item.img_ref.page}` : ''}`
+                  ? `${item.img_ref.file}${item.img_ref.page > 1 ? ` p.${item.img_ref.page}` : ''}`
                   : String(item.img_ref))
               : null,
             links: Array.isArray(item.links) ? item.links : (item.link ? [{ url: item.link, label: item.link, type: "other" }] : []),
@@ -3226,7 +3224,7 @@ ${sowTemplatesText}
       setStage("review");
       buildSowCoverage(result.project_type || "", byRoom, apiKey);
     } catch (e) {
-      setErr(`Помилка: ${e.message}`);
+      setErr(`Error: ${e.message}`);
     }
     setParsing(false); setParseStatus("");
   }
@@ -3249,7 +3247,7 @@ ${sowTemplatesText}
     return next;
   });
 
-  // Загрузка попередньої сесії
+  // Load previous session
   const lastSession = loadSession();
 
   if (stage === "review") {
@@ -3286,7 +3284,7 @@ ${sowTemplatesText}
       {/* Header */}
       <div style={{ background: "#1a1a1a", padding: "10px 24px", display: "flex", alignItems: "center", gap: 12 }}>
         <span style={{ fontSize: 11, fontWeight: 700, color: "#f2f0ec", fontFamily: "monospace", letterSpacing: "0.1em" }}>ТЗ TOOL</span>
-        <span style={{ fontSize: 9, color: "#666", fontFamily: "monospace" }}>v0.2 — розбір ТЗ для 3D-візуалізації</span>
+        <span style={{ fontSize: 9, color: "#666", fontFamily: "monospace" }}>v0.2 — 3D visualization brief analyzer</span>
         <div style={{ marginLeft: "auto", display: "flex", alignItems: "center", gap: 12 }}>
           <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
             <span style={{ fontSize: 9, color: "#555", fontFamily: "monospace" }}>ANTHROPIC</span>
@@ -3297,7 +3295,7 @@ ${sowTemplatesText}
               placeholder="sk-ant-..."
               style={{ background: "#2a2a2a", border: "1px solid #333", color: "#aaa", fontSize: 10, fontFamily: "monospace", padding: "4px 8px", borderRadius: 4, width: 160, outline: "none" }}
             />
-            <button onClick={() => saveKey("")} style={{ fontSize: 9, fontFamily: "monospace", background: "none", border: "none", color: "#444", cursor: "pointer", padding: "0 2px" }} title="Вийти / змінити ключ">×</button>
+            <button onClick={() => saveKey("")} style={{ fontSize: 9, fontFamily: "monospace", background: "none", border: "none", color: "#444", cursor: "pointer", padding: "0 2px" }} title="Sign out / change key">×</button>
           </div>
         </div>
       </div>
@@ -3306,17 +3304,17 @@ ${sowTemplatesText}
 
         {/* Upload zone */}
         <div style={{ marginBottom: 20 }}>
-          <UploadBox label="МАТЕРІАЛИ ПРОЕКТУ" files={allFilesList.files} onAdd={allFilesList.add} onRemove={allFilesList.remove} onUpdateFile={allFilesList.updateById} color="#1a1a1a" note="PDF, DOCX, TXT, зображення, DWG, DXF, Excel, CSV — будь-які файли" />
+          <UploadBox label="PROJECT FILES" files={allFilesList.files} onAdd={allFilesList.add} onRemove={allFilesList.remove} onUpdateFile={allFilesList.updateById} color="#1a1a1a" note="PDF, DOCX, TXT, images, DWG, DXF, Excel, CSV — any files" />
         </div>
 
         {/* Brief text */}
         <div style={{ marginBottom: 16 }}>
-          <div style={{ fontSize: 10, letterSpacing: "0.14em", color: "#888", marginBottom: 5, fontFamily: "monospace" }}>ТЕКСТ БРИФУ (опціонально)</div>
+          <div style={{ fontSize: 10, letterSpacing: "0.14em", color: "#888", marginBottom: 5, fontFamily: "monospace" }}>BRIEF TEXT (optional)</div>
           <textarea
             value={briefText}
             onChange={e => setBriefText(e.target.value)}
             rows={4}
-            placeholder="Опишіть проект: тип простору, стиль / атмосфера, ключові матеріали, кількість ракурсів, формат фінальних файлів, дедлайн. Або просто завантажте файли вище — текст необов'язковий."
+            placeholder="Describe the project: space type, style / atmosphere, key materials, number of angles, final file format, deadline. Or just upload files above — text is optional."
             style={{ width: "100%", border: "1px solid #e0ddd8", borderRadius: 8, padding: "10px 12px", fontSize: 12, fontFamily: "inherit", resize: "vertical", outline: "none", background: "#fff", color: "#333", lineHeight: 1.6 }}
           />
         </div>
@@ -3332,11 +3330,11 @@ ${sowTemplatesText}
           if (!ready.length && !loading.length) return null;
           return (
             <div style={{ marginBottom: 12, display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
-              {loading.length > 0 && <span style={{ fontSize: 10, fontFamily: "monospace", color: "#e67e22", background: "#fff8f0", border: "1px solid #f0c060", padding: "3px 8px", borderRadius: 4 }}>⏳ обробляється: {loading.length} файл{loading.length > 1 ? "и" : ""}</span>}
+              {loading.length > 0 && <span style={{ fontSize: 10, fontFamily: "monospace", color: "#e67e22", background: "#fff8f0", border: "1px solid #f0c060", padding: "3px 8px", borderRadius: 4 }}>⏳ processing: {loading.length} file{loading.length > 1 ? "s" : ""}</span>}
               {totalPages > 0 && <span style={{ fontSize: 10, fontFamily: "monospace", color: tooMany ? "#e74c3c" : "#555", background: tooMany ? "#fff5f5" : "#f5f4f1", border: `1px solid ${tooMany ? "#e74c3c44" : "#ddd"}`, padding: "3px 8px", borderRadius: 4 }}>
-                {tooMany ? "⚠ " : ""}{totalPages} стор. до API{tooMany ? " — забагато, зменш вибір" : ""}
+                {tooMany ? "⚠ " : ""}{totalPages} pages to API{tooMany ? " — too many, reduce selection" : ""}
               </span>}
-              {ready.length > 0 && <span style={{ fontSize: 10, fontFamily: "monospace", color: "#888", background: "#f5f4f1", border: "1px solid #ddd", padding: "3px 8px", borderRadius: 4 }}>{ready.length} файл{ready.length > 1 ? "и" : ""} готові</span>}
+              {ready.length > 0 && <span style={{ fontSize: 10, fontFamily: "monospace", color: "#888", background: "#f5f4f1", border: "1px solid #ddd", padding: "3px 8px", borderRadius: 4 }}>{ready.length} file{ready.length > 1 ? "s" : ""} ready</span>}
             </div>
           );
         })()}
@@ -3344,8 +3342,8 @@ ${sowTemplatesText}
         {/* Project type selector */}
         <div style={{ marginBottom: 12 }}>
           <div style={{ fontSize: 9, fontFamily: "monospace", color: "#888", letterSpacing: "0.1em", marginBottom: 6 }}>
-            ОБЕРІТЬ ТИП ПРОЕКТУ
-            {selectedTypes.length === 0 && <span style={{ color: "#ccc", fontWeight: 400, letterSpacing: 0 }}> — якщо тип невідомий, AI визначить автоматично</span>}
+            SELECT PROJECT TYPE
+            {selectedTypes.length === 0 && <span style={{ color: "#ccc", fontWeight: 400, letterSpacing: 0 }}> — if unknown, AI will detect automatically</span>}
           </div>
           <div style={{ display: "flex", flexWrap: "wrap", gap: 5 }}>
             {Object.keys(SOW_TEMPLATES).map(t => {
@@ -3376,7 +3374,7 @@ ${sowTemplatesText}
           style={{ width: "100%", background: parsing ? "#444" : "#1a1a1a", color: "#f2f0ec", border: "none", padding: "16px", fontSize: 13, letterSpacing: "0.14em", fontFamily: "monospace", cursor: parsing ? "not-allowed" : "pointer", borderRadius: 8, display: "flex", alignItems: "center", justifyContent: "center", gap: 10 }}
         >
           {parsing
-            ? <><div style={{ width: 14, height: 14, border: "2px solid #666", borderTop: "2px solid #fff", borderRadius: "50%", animation: "spin 0.7s linear infinite" }} /><span style={{ fontSize: 11, letterSpacing: "0.05em", maxWidth: 500, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{parseStatus || "РОЗБИРАЮ ТЗ…"}</span></>
+            ? <><div style={{ width: 14, height: 14, border: "2px solid #666", borderTop: "2px solid #fff", borderRadius: "50%", animation: "spin 0.7s linear infinite" }} /><span style={{ fontSize: 11, letterSpacing: "0.05em", maxWidth: 500, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{parseStatus || "ANALYZING BRIEF…"}</span></>
             : "CREATE SOWa →"
           }
         </button>
@@ -3385,13 +3383,13 @@ ${sowTemplatesText}
         {tzRooms.length > 0 && (
           <div style={{ marginTop: 16, padding: "10px 14px", background: "#f0f7ff", border: "1px solid #b3d4f5", borderRadius: 8, display: "flex", alignItems: "center", gap: 10 }}>
             <span style={{ fontSize: 10, color: "#2980b9", fontFamily: "monospace", flex: 1 }}>
-              {tzProjectType || "Сесія"} · {tzRooms.length} кімн.
+              {tzProjectType || "Session"} · {tzRooms.length} room{tzRooms.length === 1 ? "" : "s"}
             </span>
             <button
               onClick={() => setStage("review")}
               style={{ fontSize: 10, fontFamily: "monospace", background: "#2980b9", border: "none", color: "#fff", padding: "4px 12px", borderRadius: 4, cursor: "pointer", fontWeight: 700 }}
             >
-              Повернутися →
+              Return →
             </button>
           </div>
         )}
@@ -3400,7 +3398,7 @@ ${sowTemplatesText}
         {lastSession && tzRooms.length === 0 && (
           <div style={{ marginTop: 16, padding: "10px 14px", background: "#fff", border: "1px solid #e8e6e1", borderRadius: 8, display: "flex", alignItems: "center", gap: 10 }}>
             <span style={{ fontSize: 10, color: "#888", fontFamily: "monospace", flex: 1 }}>
-              Остання сесія: {new Date(lastSession.savedAt).toLocaleString()}
+              Last session: {new Date(lastSession.savedAt).toLocaleString()}
             </span>
             <button
               onClick={() => {
@@ -3421,7 +3419,7 @@ ${sowTemplatesText}
               }}
               style={{ fontSize: 10, fontFamily: "monospace", background: "transparent", border: "1px solid #ddd", color: "#555", padding: "4px 10px", borderRadius: 4, cursor: "pointer" }}
             >
-              Відновити
+              Restore
             </button>
           </div>
         )}

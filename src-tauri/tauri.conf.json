@@ -1,5 +1,5 @@
 {
-  "productName": "TZ Tool",
+  "productName": "Doc Nexus",
   "version": "0.1.0",
   "identifier": "com.tztools.app",
   "build": {
@@ -8,7 +8,7 @@
   "app": {
     "windows": [
       {
-        "title": "ТЗ Tool",
+        "title": "Doc Nexus",
         "width": 1280,
         "height": 860,
         "minWidth": 900,

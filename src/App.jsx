@@ -2166,7 +2166,7 @@ function TzReviewStep({ projectType, rooms, tzByRoom, sowMissing, sowUnclear, de
       {/* Top bar */}
       <div style={{ background: "#1a1a1a", padding: "0 20px", display: "flex", alignItems: "center", gap: 12, height: 44, flexShrink: 0 }}>
         <button onClick={onBack} style={{ background: "none", border: "none", color: "#666", cursor: "pointer", fontSize: 16, padding: 0 }}>←</button>
-        <span style={{ fontSize: 11, fontWeight: 700, color: "#f2f0ec", fontFamily: "monospace", letterSpacing: "0.1em" }}>ТЗ TOOL</span>
+        <span style={{ fontSize: 11, fontWeight: 700, color: "#f2f0ec", fontFamily: "monospace", letterSpacing: "0.1em" }}>DOC NEXUS</span>
         {projectType && <span style={{ fontSize: 9, color: "#fff", background: "#2980b9", fontFamily: "monospace", padding: "2px 8px", borderRadius: 10 }}>{projectType}</span>}
         <span style={{ fontSize: 9, color: "#555", fontFamily: "monospace", marginLeft: "auto" }}>{totalItems} items</span>
         {(sowMissing?.length > 0 || sowUnclear?.length > 0) && (
@@ -3404,7 +3404,7 @@ RESPOND ONLY WITH JSON:
     <div style={{ minHeight: "100vh", background: "#f5f4f1" }}>
       {/* Header */}
       <div style={{ background: "#1a1a1a", padding: "10px 24px", display: "flex", alignItems: "center", gap: 12 }}>
-        <span style={{ fontSize: 11, fontWeight: 700, color: "#f2f0ec", fontFamily: "monospace", letterSpacing: "0.1em" }}>ТЗ TOOL</span>
+        <span style={{ fontSize: 11, fontWeight: 700, color: "#f2f0ec", fontFamily: "monospace", letterSpacing: "0.1em" }}>DOC NEXUS</span>
         <span style={{ fontSize: 9, color: "#666", fontFamily: "monospace" }}>v0.2 — 3D visualization brief analyzer</span>
         <div style={{ marginLeft: "auto", display: "flex", alignItems: "center", gap: 12 }}>
           <div style={{ display: "flex", alignItems: "center", gap: 6 }}>

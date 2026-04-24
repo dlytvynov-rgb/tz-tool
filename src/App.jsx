@@ -1894,7 +1894,7 @@ const SOURCE_TYPE_COLOR = {
 };
 const SOURCE_FILE_ICO = { pdf: "📄", dwg: "📐", dxf: "📐", excel: "📊", text: "📝", image: "🖼️" };
 
-function TzReviewStep({ projectType, rooms, tzByRoom, sowMissing, sowUnclear, deliverySpec, sowCoverage, buildingCoverage, clientComments, annotation, conflicts, roadmap, sources, files, sourceTags, onSourceTag, onEdit, onRemove, onBack, clientTranslation, buildingClientTranslation, onBuildClientTranslation }) {
+function TzReviewStep({ projectType, rooms, tzByRoom, sowMissing, sowUnclear, deliverySpec, sowCoverage, buildingCoverage, clientComments, annotation, conflicts, roadmap, sources, files, sourceTags, onSourceTag, onEdit, onRemove, onBack, clientTranslation, buildingClientTranslation, onBuildClientTranslation, miqEval, onMiqRate, onMiqComment, miqFnItems, onMiqFnAdd, onMiqFnRemove }) {
   const allRooms = rooms?.length ? ["General", ...rooms.filter(r => r !== "General")] : ["General"];
   const [viewMode, setViewMode] = useState("rooms"); // kept for legacy code below
   const [reportMode, setReportMode] = useState("pm");
@@ -1905,6 +1905,8 @@ function TzReviewStep({ projectType, rooms, tzByRoom, sowMissing, sowUnclear, de
   const [docViewer, setDocViewer] = useState(null); // { source, pageNum }
   const [tableFilter, setTableFilter] = useState({ type: "", room: "", stage: "", search: "" });
   const [tableSort, setTableSort] = useState({ col: "room", dir: "asc" });
+  const [miqFnInput, setMiqFnInput] = useState("");
+  const [showF1, setShowF1] = useState(false);
 
   const allItems = Object.values(tzByRoom || {}).flatMap(r => Object.values(r)).flat();
 
@@ -2042,6 +2044,43 @@ function TzReviewStep({ projectType, rooms, tzByRoom, sowMissing, sowUnclear, de
     document.title = `Brief — ${projectType || "project"} — ${new Date().toLocaleDateString("en-US")}`;
     window.print();
     document.title = prev;
+  };
+
+  const exportMiqEval = async () => {
+    const XLSX = await loadXLSX();
+    const rows = [];
+    let n = 1;
+    (sowMissing || []).forEach((m, i) => {
+      const e = (miqEval || {})[`missing_${i}`] || {};
+      rows.push({ "#": n++, Type: "Missing", Question: m, "PM Rating": e.rating || "", Comment: e.comment || "" });
+    });
+    (sowUnclear || []).forEach((u, i) => {
+      const e = (miqEval || {})[`unclear_${i}`] || {};
+      rows.push({ "#": n++, Type: "Unclear", Question: u, "PM Rating": e.rating || "", Comment: e.comment || "" });
+    });
+    (conflicts || []).forEach((c, i) => {
+      const text = typeof c === "string" ? c : (c.description || c.text || "");
+      const e = (miqEval || {})[`conflict_${i}`] || {};
+      rows.push({ "#": n++, Type: "Conflict", Question: text, "PM Rating": e.rating || "", Comment: e.comment || "" });
+    });
+    (miqFnItems || []).forEach(item => {
+      rows.push({ "#": n++, Type: "FN (missed)", Question: item, "PM Rating": "FN", Comment: "" });
+    });
+    const tp = Object.values(miqEval || {}).filter(e => e.rating === "TP").length;
+    const fp = Object.values(miqEval || {}).filter(e => e.rating === "FP").length;
+    const fn = (miqFnItems || []).length;
+    const precision = tp + fp > 0 ? Math.round(tp / (tp + fp) * 100) : 0;
+    const recall = tp + fn > 0 ? Math.round(tp / (tp + fn) * 100) : 0;
+    const f1 = 2 * tp + fp + fn > 0 ? Math.round(2 * tp / (2 * tp + fp + fn) * 100) : 0;
+    rows.push({});
+    rows.push({ "#": "", Type: "", Question: "Precision", "PM Rating": `${tp}/${tp + fp}`, Comment: `${precision}%` });
+    rows.push({ "#": "", Type: "", Question: "Recall", "PM Rating": `${tp}/${tp + fn}`, Comment: `${recall}%` });
+    rows.push({ "#": "", Type: "", Question: "F1 Score", "PM Rating": "", Comment: `${f1}%` });
+    const ws = XLSX.utils.json_to_sheet(rows);
+    ws["!cols"] = [5, 12, 80, 12, 40].map(w => ({ wch: w }));
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, "MIQ Evaluation");
+    XLSX.writeFile(wb, `miq-eval-${new Date().toISOString().slice(0, 10)}.xlsx`);
   };
 
   const exportReportExcel = async (isClient) => {
@@ -2445,26 +2484,39 @@ function TzReviewStep({ projectType, rooms, tzByRoom, sowMissing, sowUnclear, de
         {/* ── MIQ ── */}
         {sowPage === "niq" && (() => {
           const niqEmpty = !sowMissing?.length && !sowUnclear?.length && !conflicts?.length;
-          if (niqEmpty) return <div style={{ color: "#27ae60", fontFamily: "monospace", fontSize: 11, padding: "24px 0" }}>✓ No issues — brief is complete</div>;
+          const tp = Object.values(miqEval || {}).filter(e => e.rating === "TP").length;
+          const fp = Object.values(miqEval || {}).filter(e => e.rating === "FP").length;
+          const fn = (miqFnItems || []).length;
+          const hasEval = tp + fp + fn > 0;
+          const precision = tp + fp > 0 ? Math.round(tp / (tp + fp) * 100) : 0;
+          const recall = tp + fn > 0 ? Math.round(tp / (tp + fn) * 100) : 0;
+          const f1 = 2 * tp + fp + fn > 0 ? Math.round(2 * tp / (2 * tp + fp + fn) * 100) : 0;
+          const rateBtn = (key, val, current, colorActive, colorBg) => (
+            <button onClick={() => onMiqRate(key, current === val ? null : val)} style={{ fontSize: 9, fontFamily: "monospace", fontWeight: 700, padding: "2px 6px", border: `1px solid ${current === val ? colorActive : "#ddd"}`, borderRadius: 3, cursor: "pointer", background: current === val ? colorBg : "#fff", color: current === val ? colorActive : "#bbb", flexShrink: 0 }}>{val}</button>
+          );
+          const renderRow = (text, key, icon, iconColor, borderColor, isLast) => {
+            const dashIdx = text.indexOf(" — ");
+            const label = dashIdx > -1 ? text.slice(0, dashIdx) : null;
+            const rest = dashIdx > -1 ? text.slice(dashIdx + 3) : text;
+            const e = (miqEval || {})[key] || {};
+            return (
+              <div key={key} style={{ padding: "9px 0", borderBottom: isLast ? "none" : `1px solid ${borderColor}`, display: "flex", alignItems: "flex-start", gap: 8 }}>
+                <span style={{ color: iconColor, fontFamily: "monospace", fontSize: 12, flexShrink: 0, marginTop: 1 }}>{icon}</span>
+                <span style={{ fontSize: 11, color: "#333", lineHeight: 1.55, flex: 1 }}>{label && <strong>{label}</strong>}{label ? " — " : ""}{rest}</span>
+                {rateBtn(key, "TP", e.rating, "#27ae60", "#eafaf1")}
+                {rateBtn(key, "FP", e.rating, "#e74c3c", "#fdf2f2")}
+                {e.rating && <input value={e.comment || ""} onChange={ev => onMiqComment(key, ev.target.value)} placeholder="comment..." style={{ fontSize: 10, fontFamily: "monospace", border: "1px solid #eee", borderRadius: 3, padding: "2px 6px", width: 110, flexShrink: 0, marginTop: 1 }} />}
+              </div>
+            );
+          };
+          if (niqEmpty && !fn) return <div style={{ color: "#27ae60", fontFamily: "monospace", fontSize: 11, padding: "24px 0" }}>✓ No issues — brief is complete</div>;
           return (
             <>
               {sowMissing?.length > 0 && (
                 <div style={{ marginBottom: 24 }}>
                   <div style={{ fontSize: 9, fontWeight: 700, fontFamily: "monospace", color: "#e74c3c", letterSpacing: "0.12em", marginBottom: 8 }}>MISSING ({sowMissing.length})</div>
                   <div style={{ background: "#fff", borderRadius: 6, border: "1px solid #fde8e8", padding: "2px 14px" }}>
-                    {sowMissing.map((m, i) => {
-                      const dashIdx = m.indexOf(" — ");
-                      const label = dashIdx > -1 ? m.slice(0, dashIdx) : null;
-                      const rest  = dashIdx > -1 ? m.slice(dashIdx + 3) : m;
-                      return (
-                        <div key={i} style={{ padding: "9px 0", borderBottom: i < sowMissing.length - 1 ? "1px solid #fde8e8" : "none", display: "flex", gap: 10 }}>
-                          <span style={{ color: "#e74c3c", fontFamily: "monospace", fontSize: 12, flexShrink: 0, marginTop: 1 }}>?</span>
-                          <span style={{ fontSize: 11, color: "#333", lineHeight: 1.55 }}>
-                            {label && <strong>{label}</strong>}{label ? " — " : ""}{rest}
-                          </span>
-                        </div>
-                      );
-                    })}
+                    {sowMissing.map((m, i) => renderRow(m, `missing_${i}`, "?", "#e74c3c", "#fde8e8", i === sowMissing.length - 1))}
                   </div>
                 </div>
               )}
@@ -2472,19 +2524,7 @@ function TzReviewStep({ projectType, rooms, tzByRoom, sowMissing, sowUnclear, de
                 <div style={{ marginBottom: 24 }}>
                   <div style={{ fontSize: 9, fontWeight: 700, fontFamily: "monospace", color: "#e67e22", letterSpacing: "0.12em", marginBottom: 8 }}>UNCLEAR ({sowUnclear.length})</div>
                   <div style={{ background: "#fff", borderRadius: 6, border: "1px solid #fff3e0", padding: "2px 14px" }}>
-                    {sowUnclear.map((u, i) => {
-                      const dashIdx = u.indexOf(" — ");
-                      const label = dashIdx > -1 ? u.slice(0, dashIdx) : null;
-                      const rest  = dashIdx > -1 ? u.slice(dashIdx + 3) : u;
-                      return (
-                        <div key={i} style={{ padding: "9px 0", borderBottom: i < sowUnclear.length - 1 ? "1px solid #fff3e0" : "none", display: "flex", gap: 10 }}>
-                          <span style={{ color: "#e67e22", fontFamily: "monospace", fontSize: 12, flexShrink: 0, marginTop: 1 }}>⚠</span>
-                          <span style={{ fontSize: 11, color: "#333", lineHeight: 1.55 }}>
-                            {label && <strong>{label}</strong>}{label ? " — " : ""}{rest}
-                          </span>
-                        </div>
-                      );
-                    })}
+                    {sowUnclear.map((u, i) => renderRow(u, `unclear_${i}`, "⚠", "#e67e22", "#fff3e0", i === sowUnclear.length - 1))}
                   </div>
                 </div>
               )}
@@ -2494,19 +2534,49 @@ function TzReviewStep({ projectType, rooms, tzByRoom, sowMissing, sowUnclear, de
                   <div style={{ background: "#fff", borderRadius: 6, border: "1px solid #fde8e8", padding: "2px 14px" }}>
                     {conflicts.map((c, i) => {
                       const text = typeof c === "string" ? c : (c.description || c.text || "");
-                      const dashIdx = text.indexOf(" — ");
-                      const label = dashIdx > -1 ? text.slice(0, dashIdx) : null;
-                      const rest  = dashIdx > -1 ? text.slice(dashIdx + 3) : text;
-                      return (
-                        <div key={i} style={{ padding: "9px 0", borderBottom: i < conflicts.length - 1 ? "1px solid #fde8e8" : "none", display: "flex", gap: 10 }}>
-                          <span style={{ color: "#e74c3c", fontFamily: "monospace", fontSize: 12, flexShrink: 0, marginTop: 1 }}>⚡</span>
-                          <span style={{ fontSize: 11, color: "#333", lineHeight: 1.55 }}>
-                            {label && <strong>{label}</strong>}{label ? " — " : ""}{rest}
-                          </span>
-                        </div>
-                      );
+                      return renderRow(text, `conflict_${i}`, "⚡", "#e74c3c", "#fde8e8", i === conflicts.length - 1);
                     })}
                   </div>
+                </div>
+              )}
+
+              {/* FN — manually added missed questions */}
+              <div style={{ marginBottom: 24 }}>
+                <div style={{ fontSize: 9, fontWeight: 700, fontFamily: "monospace", color: "#8e44ad", letterSpacing: "0.12em", marginBottom: 8 }}>FN — MISSED BY AI{fn > 0 ? ` (${fn})` : ""}</div>
+                {fn > 0 && (
+                  <div style={{ background: "#fff", borderRadius: 6, border: "1px solid #f0e6f9", padding: "2px 14px", marginBottom: 8 }}>
+                    {(miqFnItems || []).map((item, i) => (
+                      <div key={i} style={{ padding: "9px 0", borderBottom: i < fn - 1 ? "1px solid #f0e6f9" : "none", display: "flex", alignItems: "center", gap: 8 }}>
+                        <span style={{ color: "#8e44ad", fontFamily: "monospace", fontSize: 9, fontWeight: 700, flexShrink: 0 }}>FN</span>
+                        <span style={{ fontSize: 11, color: "#333", flex: 1, lineHeight: 1.55 }}>{item}</span>
+                        <button onClick={() => onMiqFnRemove(i)} style={{ fontSize: 11, background: "none", border: "none", color: "#ccc", cursor: "pointer", padding: "0 4px" }}>✕</button>
+                      </div>
+                    ))}
+                  </div>
+                )}
+                <div style={{ display: "flex", gap: 6 }}>
+                  <input value={miqFnInput} onChange={e => setMiqFnInput(e.target.value)} onKeyDown={e => { if (e.key === "Enter" && miqFnInput.trim()) { onMiqFnAdd(miqFnInput.trim()); setMiqFnInput(""); } }} placeholder="AI missed: describe the question..." style={{ flex: 1, fontSize: 11, fontFamily: "monospace", border: "1px solid #e0d6f0", borderRadius: 4, padding: "5px 10px" }} />
+                  <button onClick={() => { if (miqFnInput.trim()) { onMiqFnAdd(miqFnInput.trim()); setMiqFnInput(""); } }} style={{ fontSize: 10, fontFamily: "monospace", background: "#8e44ad", border: "none", color: "#fff", padding: "4px 12px", borderRadius: 4, cursor: "pointer", fontWeight: 700 }}>+ Add</button>
+                </div>
+              </div>
+
+              {/* F1 evaluation panel */}
+              {hasEval && (
+                <div style={{ marginBottom: 16, padding: "12px 16px", background: "#f8f8f8", borderRadius: 8, border: "1px solid #e8e6e1" }}>
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: showF1 ? 12 : 0 }}>
+                    <span style={{ fontSize: 10, fontFamily: "monospace", color: "#777" }}>TP: {tp} · FP: {fp} · FN: {fn}</span>
+                    <div style={{ display: "flex", gap: 8 }}>
+                      <button onClick={() => setShowF1(v => !v)} style={{ fontSize: 9, fontFamily: "monospace", background: "#1a1a1a", border: "none", color: "#fff", padding: "4px 12px", borderRadius: 4, cursor: "pointer", fontWeight: 700 }}>{showF1 ? "Hide" : "F1 Score →"}</button>
+                      <button onClick={exportMiqEval} style={{ fontSize: 9, fontFamily: "monospace", background: "none", border: "1px solid #27ae60", color: "#27ae60", padding: "4px 10px", borderRadius: 4, cursor: "pointer", fontWeight: 700 }}>↓ XLS</button>
+                    </div>
+                  </div>
+                  {showF1 && (
+                    <div style={{ display: "flex", gap: 24, marginTop: 4 }}>
+                      <div><div style={{ fontSize: 9, fontFamily: "monospace", color: "#aaa", marginBottom: 2 }}>PRECISION</div><div style={{ fontSize: 22, fontWeight: 700, fontFamily: "monospace" }}>{precision}%</div><div style={{ fontSize: 9, fontFamily: "monospace", color: "#aaa" }}>{tp}/{tp + fp}</div></div>
+                      <div><div style={{ fontSize: 9, fontFamily: "monospace", color: "#aaa", marginBottom: 2 }}>RECALL</div><div style={{ fontSize: 22, fontWeight: 700, fontFamily: "monospace" }}>{recall}%</div><div style={{ fontSize: 9, fontFamily: "monospace", color: "#aaa" }}>{tp}/{tp + fn}</div></div>
+                      <div style={{ borderLeft: "1px solid #e8e6e1", paddingLeft: 24 }}><div style={{ fontSize: 9, fontFamily: "monospace", color: "#aaa", marginBottom: 2 }}>F1 SCORE</div><div style={{ fontSize: 22, fontWeight: 700, fontFamily: "monospace", color: f1 >= 80 ? "#27ae60" : f1 >= 60 ? "#e67e22" : "#e74c3c" }}>{f1}%</div></div>
+                    </div>
+                  )}
                 </div>
               )}
             </>
@@ -2877,6 +2947,8 @@ export default function App() {
   const [tzClientTranslation, setTzClientTranslation] = useState(null); // { deliverySpec, questions, conflicts }
   const [buildingClientTranslation, setBuildingClientTranslation] = useState(false);
   const [tzConflicts, setTzConflicts] = useState([]);
+  const [miqEval, setMiqEval] = useState({});
+  const [miqFnItems, setMiqFnItems] = useState([]);
   const [tzRoadmap, setTzRoadmap] = useState([]);
   const [tzSources, setTzSources] = useState([]);
   const [tzSourceTags, setTzSourceTags] = useState({}); // { srcId: "furniture" | ... }
@@ -3261,7 +3333,9 @@ RESPOND ONLY WITH JSON:
       setTzSources(result.sources || []);
       setTzSourceTags({});
       setTzClientTranslation(null);
-      saveSession({ savedAt: new Date().toISOString(), projectType: result.project_type || "", rooms, tzByRoom: stripImgRefs(byRoom), tzAnnotation: result.project_annotation || "", clientComments: result.client_comments || [], sowMissing: result.sow_missing || [], sowUnclear: result.sow_unclear || [], deliverySpec: normalizedSpec, sowCoverage: [], conflicts: result.conflicts || [], roadmap: result.roadmap || [], sources: result.sources || [] });
+      setMiqEval({});
+      setMiqFnItems([]);
+      saveSession({ savedAt: new Date().toISOString(), projectType: result.project_type || "", rooms, tzByRoom: stripImgRefs(byRoom), tzAnnotation: result.project_annotation || "", clientComments: result.client_comments || [], sowMissing: result.sow_missing || [], sowUnclear: result.sow_unclear || [], deliverySpec: normalizedSpec, sowCoverage: [], conflicts: result.conflicts || [], roadmap: result.roadmap || [], sources: result.sources || [], miqEval: {}, miqFnItems: [] });
       setStage("review");
       buildSowCoverage(result.project_type || "", byRoom, apiKey);
     } catch (e) {
@@ -3316,6 +3390,12 @@ RESPOND ONLY WITH JSON:
         clientTranslation={tzClientTranslation}
         buildingClientTranslation={buildingClientTranslation}
         onBuildClientTranslation={buildClientTranslation}
+        miqEval={miqEval}
+        onMiqRate={(key, rating) => setMiqEval(prev => ({ ...prev, [key]: { ...(prev[key] || {}), rating } }))}
+        onMiqComment={(key, comment) => setMiqEval(prev => ({ ...prev, [key]: { ...(prev[key] || {}), comment } }))}
+        miqFnItems={miqFnItems}
+        onMiqFnAdd={item => setMiqFnItems(prev => [...prev, item])}
+        onMiqFnRemove={i => setMiqFnItems(prev => prev.filter((_, idx) => idx !== i))}
       />
     );
   }
@@ -3453,6 +3533,8 @@ RESPOND ONLY WITH JSON:
                 setTzDeliverySpec(lastSession.deliverySpec || []);
                 setTzSowCoverage(lastSession.sowCoverage || []);
                 setTzConflicts(lastSession.conflicts || []);
+                setMiqEval(lastSession.miqEval || {});
+                setMiqFnItems(lastSession.miqFnItems || []);
                 setTzRoadmap(lastSession.roadmap || []);
                 setTzSources(lastSession.sources || []);
                 setTzSourceTags({});

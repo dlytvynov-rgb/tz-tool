@@ -889,21 +889,24 @@ function filesToParts(files, fallbackLabel) {
   (files || []).forEach((f, fi) => {
     const fileLabel = f._label || `${fallbackLabel} ${fi + 1}`;
     const fullLabel = `${fileLabel} [${f.ext || f.type?.toUpperCase() || "FILE"}: ${f.filename}]`;
+    // XML wrapper — helps Claude clearly separate sources and avoid cross-contamination
+    parts.push({ type: "text", text: `<document>\n<source>${fileLabel}</source>\n<type>${f.ext || f.type?.toUpperCase() || "FILE"}</type>\n<filename>${f.filename}</filename>` });
     if (f.textContent) {
-      parts.push({ type: "text", text: `${fullLabel}:\n${f.textContent}` });
+      parts.push({ type: "text", text: `<content>\n${f.textContent}\n</content>` });
     }
     (f.pages || []).filter(p => p.b64 && p._selected !== false).forEach((pg, pi) => {
       const pageLabel = `${fullLabel}${pi > 0 ? ` p.${pi + 1}` : ""}`;
-      if (pg.text) parts.push({ type: "text", text: `${pageLabel} — extracted text (use for exact dimensions, materials and specs):\n${pg.text}` });
+      if (pg.text) parts.push({ type: "text", text: `<page num="${pg.pageNum || pi + 1}">\n${pg.text}\n</page>` });
       // Skip image only for pure text pages with no embedded images and no form fields
       // All other pages: send image so Claude sees visual context, annotations, and spatial references
       const skipImage = pg._textRich && !pg._hasImages && !pg._hasFormFields;
       if (skipImage) return;
       if (!f.textContent || f.type === "dwg") {
-        parts.push({ type: "text", text: `${pageLabel}:` });
+        parts.push({ type: "text", text: `<page num="${pg.pageNum || pi + 1}">` });
       }
       parts.push({ type: "image", source: { type: "base64", media_type: pg.mediaType || "image/jpeg", data: pg.b64 } });
     });
+    parts.push({ type: "text", text: `</document>` });
   });
   return parts;
 }
@@ -3220,10 +3223,11 @@ Return ONLY valid JSON in exactly the same structure with translated values:
 LANGUAGE: input materials may be in any language — Ukrainian, Russian, English, mixed. Recognize requirements regardless of language. Always respond ONLY in English.
 
 WORKING PRINCIPLES:
-1. Read ALL files together, not one by one — cross-reference brief with drawings, references with comments, specs with each other
-2. Think like an artist: "what do I need to do to start this project without rework?"
-3. Extract ALL links (URLs) from any source — furniture, catalogs, Pinterest, Behance, brands, colors, maps — and attach to the specific requirement
-4. Flag contradictions between files — if the brief conflicts with a drawing, or a reference doesn't match the text description
+1. Extract ONLY information explicitly stated in the provided documents. Do NOT infer, assume, or add knowledge from outside the files. If a value is absent — mark as missing, never guess.
+2. Read ALL files together — cross-reference brief with drawings, references with comments, specs with each other. Each <document> tag is a separate source — track which source each finding comes from.
+3. Think like an artist: "what do I need to do to start this project without rework?"
+4. Extract ALL links (URLs) from any source — furniture, catalogs, Pinterest, Behance, brands, colors, maps — and attach to the specific requirement
+5. Flag contradictions between files — if the brief conflicts with a drawing, or a reference doesn't match the text description
 
 PDF FORMS: Pages from Archivizer "Master Direction" forms include a "FORM DATA:" section with pre-extracted field values (☑ = checked checkbox, [FIELD] = typed text, [COMMENT] = annotation). Treat all FORM DATA entries as source: "brief" — confirmed client selections, not defaults.
 

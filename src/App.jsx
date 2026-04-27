@@ -3226,18 +3226,9 @@ Return ONLY valid JSON in exactly the same structure with translated values:
       return { ...f, _label: label };
     });
 
-    // Pre-process large PDFs: chunk into Haiku batches, extract text per page
-    let processedFiles;
-    try {
-      processedFiles = await preProcessLargeFiles(labeledFiles, apiKey, setParseStatus);
-    } catch (e) {
-      setErr(`Pre-processing error: ${e.message}`);
-      setParsing(false); setParseStatus("");
-      return;
-    }
-
     // Pack standalone image files into a contact-sheet PDF when there are many
-    const imgOnlyFiles = processedFiles.filter(f => f.type === "image");
+    let filesToProcess = labeledFiles;
+    const imgOnlyFiles = labeledFiles.filter(f => f.type === "image");
     if (imgOnlyFiles.length > 6) {
       setParseStatus(`Packing ${imgOnlyFiles.length} reference images…`);
       try {
@@ -3245,14 +3236,24 @@ Return ONLY valid JSON in exactly the same structure with translated values:
         const packedPdfFile = await packImagesToPdf(packInput);
         const packedData = await processFile(packedPdfFile);
         if (packedData) {
-          processedFiles = [
-            ...processedFiles.filter(f => f.type !== "image"),
+          filesToProcess = [
+            ...labeledFiles.filter(f => f.type !== "image"),
             { ...packedData, _label: "REFERENCES", _category: "References" },
           ];
         }
       } catch (e) {
         console.warn("Image packing failed, sending originals:", e);
       }
+    }
+
+    // Pre-process large PDFs: chunk into Haiku batches, extract text per page
+    let processedFiles;
+    try {
+      processedFiles = await preProcessLargeFiles(filesToProcess, apiKey, setParseStatus);
+    } catch (e) {
+      setErr(`Pre-processing error: ${e.message}`);
+      setParsing(false); setParseStatus("");
+      return;
     }
 
     setParseStatus("Sending to Claude…");

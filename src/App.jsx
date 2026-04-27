@@ -1,6 +1,7 @@
 import { useState, useRef, useCallback, useMemo, useEffect } from "react";
 import { LibreDwg, Dwg_File_Type } from "@mlightcad/libredwg-web";
 import { jsonrepair } from "jsonrepair";
+import { PDFDocument, rgb, StandardFonts } from "pdf-lib";
 
 // ─── SheetJS (Excel) ──────────────────────────────────────────────────────────
 async function loadXLSX() {
@@ -339,6 +340,50 @@ async function loadJSZip() {
 
 const SUPPORTED_EXTS = [".pdf", ".jpg", ".jpeg", ".png", ".gif", ".webp", ".bmp", ".tiff", ".tif",
   ".dxf", ".dwg", ".xlsx", ".xls", ".csv", ".docx", ".txt", ".md"];
+
+// Pack image files into a contact-sheet PDF (2×2 grid, filename caption under each image)
+async function packImagesToPdf(imageFiles) {
+  const PAGE_W = 1200, PAGE_H = 1600;
+  const COLS = 2, ROWS = 2, PER_PAGE = COLS * ROWS;
+  const PAD = 30, CAPTION_H = 28, GAP = 20;
+  const cellW = (PAGE_W - PAD * 2 - GAP * (COLS - 1)) / COLS;
+  const cellH = (PAGE_H - PAD * 2 - GAP * (ROWS - 1) - CAPTION_H * ROWS) / ROWS;
+
+  const pdfDoc = await PDFDocument.create();
+  const font = await pdfDoc.embedFont(StandardFonts.Helvetica);
+
+  for (let i = 0; i < imageFiles.length; i += PER_PAGE) {
+    const batch = imageFiles.slice(i, i + PER_PAGE);
+    const page = pdfDoc.addPage([PAGE_W, PAGE_H]);
+
+    for (let j = 0; j < batch.length; j++) {
+      const { filename, b64, mediaType } = batch[j];
+      const col = j % COLS, row = Math.floor(j / COLS);
+      const x = PAD + col * (cellW + GAP);
+      const y = PAGE_H - PAD - (row + 1) * (cellH + CAPTION_H + GAP) + GAP;
+
+      try {
+        const imgBytes = Uint8Array.from(atob(b64), c => c.charCodeAt(0));
+        const img = mediaType === "image/png"
+          ? await pdfDoc.embedPng(imgBytes)
+          : await pdfDoc.embedJpg(imgBytes);
+        const { width, height } = img;
+        const scale = Math.min(cellW / width, cellH / height);
+        const dw = width * scale, dh = height * scale;
+        const ox = x + (cellW - dw) / 2, oy = y + CAPTION_H + (cellH - dh) / 2;
+        page.drawImage(img, { x: ox, y: oy, width: dw, height: dh });
+      } catch { /* skip unembeddable image */ }
+
+      const name = (filename || "").replace(/\.[^.]+$/, "");
+      const maxChars = Math.floor(cellW / 7);
+      const caption = name.length > maxChars ? name.slice(0, maxChars - 1) + "…" : name;
+      page.drawText(caption, { x, y: y + 4, size: 11, font, color: rgb(0.3, 0.3, 0.3), maxWidth: cellW });
+    }
+  }
+
+  const pdfBytes = await pdfDoc.save();
+  return new File([pdfBytes], "_references_packed.pdf", { type: "application/pdf" });
+}
 
 // ─── Universal file processor ─────────────────────────────────────────────────
 async function processFile(file, onProg, sig) {
@@ -3190,6 +3235,26 @@ Return ONLY valid JSON in exactly the same structure with translated values:
       setParsing(false); setParseStatus("");
       return;
     }
+
+    // Pack standalone image files into a contact-sheet PDF when there are many
+    const imgOnlyFiles = processedFiles.filter(f => f.type === "image");
+    if (imgOnlyFiles.length > 4) {
+      setParseStatus(`Packing ${imgOnlyFiles.length} reference images…`);
+      try {
+        const packInput = imgOnlyFiles.map(f => ({ filename: f.filename, b64: f.b64, mediaType: "image/jpeg" }));
+        const packedPdfFile = await packImagesToPdf(packInput);
+        const packedData = await processFile(packedPdfFile);
+        if (packedData) {
+          processedFiles = [
+            ...processedFiles.filter(f => f.type !== "image"),
+            { ...packedData, _label: "REFERENCES", _category: "References" },
+          ];
+        }
+      } catch (e) {
+        console.warn("Image packing failed, sending originals:", e);
+      }
+    }
+
     setParseStatus("Sending to Claude…");
 
     // File manifest for the prompt

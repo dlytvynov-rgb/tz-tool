@@ -1,8 +1,6 @@
 import { useState, useRef, useCallback, useMemo, useEffect } from "react";
 import { LibreDwg, Dwg_File_Type } from "@mlightcad/libredwg-web";
 import { jsonrepair } from "jsonrepair";
-import * as THREE from "three";
-import { FBXLoader } from "three/examples/jsm/loaders/FBXLoader.js";
 
 // ─── SheetJS (Excel) ──────────────────────────────────────────────────────────
 async function loadXLSX() {
@@ -340,46 +338,7 @@ async function loadJSZip() {
 }
 
 const SUPPORTED_EXTS = [".pdf", ".jpg", ".jpeg", ".png", ".gif", ".webp", ".bmp", ".tiff", ".tif",
-  ".dxf", ".dwg", ".xlsx", ".xls", ".csv", ".docx", ".txt", ".md", ".fbx"];
-
-async function parseFBX(file) {
-  try {
-    const buf = await file.arrayBuffer();
-    const loader = new FBXLoader();
-    const group = loader.parse(buf, "");
-
-    const objects = [];
-    const materials = new Set();
-
-    group.traverse(obj => {
-      if (obj.isMesh) {
-        const box = new THREE.Box3().setFromObject(obj);
-        const size = new THREE.Vector3();
-        box.getSize(size);
-        const entry = { name: obj.name || obj.uuid.slice(0, 8) };
-        if (size.x > 0) entry.size = `${size.x.toFixed(1)} × ${size.y.toFixed(1)} × ${size.z.toFixed(1)}`;
-        if (obj.material) {
-          const mats = Array.isArray(obj.material) ? obj.material : [obj.material];
-          mats.forEach(m => { if (m.name) materials.add(m.name); entry.material = mats.map(m => m.name || "unnamed").join(", "); });
-        }
-        objects.push(entry);
-      }
-    });
-
-    const lines = [`FBX MODEL: ${file.name}`, `Objects (${objects.length}):`];
-    objects.forEach(o => {
-      let line = `  • ${o.name}`;
-      if (o.size) line += ` — size: ${o.size}`;
-      if (o.material) line += ` — material: ${o.material}`;
-      lines.push(line);
-    });
-    if (materials.size > 0) lines.push(`\nMaterials: ${[...materials].join(", ")}`);
-
-    return { pages: [], type: "fbx", filename: file.name, ext: "FBX", textContent: lines.join("\n").slice(0, 12000) };
-  } catch (e) {
-    return { pages: [], type: "fbx", filename: file.name, ext: "FBX", textContent: `[FBX read error: ${e.message}]` };
-  }
-}
+  ".dxf", ".dwg", ".xlsx", ".xls", ".csv", ".docx", ".txt", ".md"];
 
 // ─── Universal file processor ─────────────────────────────────────────────────
 async function processFile(file, onProg, sig) {
@@ -430,7 +389,6 @@ async function processFile(file, onProg, sig) {
       onProg?.(100); return { pages: [], type: "text", filename: file.name, ext: "DOCX", textContent: result.value.slice(0, 12000) };
     } catch { onProg?.(100); return { pages: [], type: "other", filename: file.name, ext: "DOCX", textContent: "[DOCX read error]" }; }
   }
-  if (nm.endsWith(".fbx")) { onProg?.(10); const result = await parseFBX(file); onProg?.(100); return result; }
   if (nm.endsWith(".pdf")) return pdfToPages(file, onProg, sig);
   if (file.type.startsWith("image/")) return imageToB64(file, onProg, sig);
   onProg?.(100);

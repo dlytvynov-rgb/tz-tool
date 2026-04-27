@@ -3238,7 +3238,7 @@ Return ONLY valid JSON in exactly the same structure with translated values:
 
     // Pack standalone image files into a contact-sheet PDF when there are many
     const imgOnlyFiles = processedFiles.filter(f => f.type === "image");
-    if (imgOnlyFiles.length > 4) {
+    if (imgOnlyFiles.length > 6) {
       setParseStatus(`Packing ${imgOnlyFiles.length} reference images…`);
       try {
         const packInput = imgOnlyFiles.map(f => ({ filename: f.filename, b64: f.b64, mediaType: "image/jpeg" }));

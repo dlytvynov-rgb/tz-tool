@@ -52,11 +52,19 @@ async function pdfToPages(file, onProg, sig) {
     let pageText = null;
     let isTextRich = false;
     let hasFormFields = false;
+    let hasEmbeddedImages = false;
     try {
-      const [tc, annotations] = await Promise.all([
+      const [tc, annotations, opList] = await Promise.all([
         page.getTextContent(),
         page.getAnnotations().catch(() => []),
+        page.getOperatorList().catch(() => null),
       ]);
+
+      // Detect embedded raster images on page
+      if (opList) {
+        const IMAGE_OPS = new Set([82, 83, 84]); // paintImageXObject, paintInlineImageXObject, paintImageMaskXObject
+        hasEmbeddedImages = opList.fnArray.some(op => IMAGE_OPS.has(op));
+      }
 
       // Text layer reconstruction
       if (tc.items.length > 0) {
@@ -103,29 +111,32 @@ async function pdfToPages(file, onProg, sig) {
     } catch { /* ignore */ }
 
     // ── Image rendering ──
-    // Scans (no text layer) get higher quality; text-rich pages rely more on text
+    // Pure text pages (no embedded images): small JPEG — only for layout context
+    // Pages with embedded images (moodboards, annotated refs): high-res PNG/JPEG
+    // Scans (no text at all): high-res PNG lossless
+    const needsHighRes = !isTextRich || hasEmbeddedImages;
+    const imgMaxDim = needsHighRes ? MAX_DIM : 900;
     const vp0 = page.getViewport({ scale: 1 });
-    const sc = Math.min(MAX_DIM / vp0.width, MAX_DIM / vp0.height, 2.0);
+    const sc = Math.min(imgMaxDim / vp0.width, imgMaxDim / vp0.height, 2.0);
     const vp = page.getViewport({ scale: sc });
     const canvas = document.createElement("canvas");
     canvas.width = Math.round(vp.width); canvas.height = Math.round(vp.height);
     await page.render({ canvasContext: canvas.getContext("2d"), viewport: vp }).promise;
-    // Scans / technical drawings (no text layer) → PNG lossless to preserve dimensions & small numbers
-    // Text-rich pages → JPEG is fine, text layer carries the precision
     let b64, mediaType;
     if (!isTextRich) {
+      // Scan / drawing — lossless PNG
       const pngB64 = canvas.toDataURL("image/png").split(",")[1];
       if (pngB64 && pngB64.length * 0.75 <= 4e6) {
         b64 = pngB64; mediaType = "image/png";
       } else {
-        // PNG too large — fallback to high-quality JPEG
         let q = 0.88;
         b64 = canvas.toDataURL("image/jpeg", q).split(",")[1];
         while (b64 && b64.length * 0.75 > 4e6 && q > 0.25) { q -= 0.07; b64 = canvas.toDataURL("image/jpeg", q).split(",")[1]; }
         mediaType = "image/jpeg";
       }
     } else {
-      let q = 0.78;
+      // Text page — JPEG, quality depends on whether it also has embedded images
+      let q = hasEmbeddedImages ? 0.78 : 0.6;
       b64 = canvas.toDataURL("image/jpeg", q).split(",")[1];
       while (b64 && b64.length * 0.75 > 4e6 && q > 0.25) { q -= 0.07; b64 = canvas.toDataURL("image/jpeg", q).split(",")[1]; }
       mediaType = "image/jpeg";
@@ -137,7 +148,7 @@ async function pdfToPages(file, onProg, sig) {
     previewCanvas.getContext("2d").drawImage(canvas, 0, 0, previewCanvas.width, previewCanvas.height);
     const preview = previewCanvas.toDataURL("image/jpeg", 0.7);
 
-    pages.push({ b64, preview, mediaType, text: pageText, _textRich: isTextRich || hasFormFields, pageNum: i });
+    pages.push({ b64, preview, mediaType, text: pageText, _textRich: isTextRich, _hasImages: hasEmbeddedImages, _hasFormFields: hasFormFields, pageNum: i });
     onProg?.(Math.round(i / n * 100));
   }
   return { pages, type: "pdf", filename: file.name, ext: "PDF" };
@@ -884,10 +895,10 @@ function filesToParts(files, fallbackLabel) {
     (f.pages || []).filter(p => p.b64 && p._selected !== false).forEach((pg, pi) => {
       const pageLabel = `${fullLabel}${pi > 0 ? ` p.${pi + 1}` : ""}`;
       if (pg.text) parts.push({ type: "text", text: `${pageLabel} — extracted text (use for exact dimensions, materials and specs):\n${pg.text}` });
-      // Form pages with extracted annotations don't need image — FORM DATA section carries checkbox state
-      // Text-rich pages without form fields also skip image — text layer is sufficient
-      // Visual pages (scans, drawings, no text) always need image
-      if (pg._textRich) return;
+      // Skip image only for pure text pages with no embedded images and no form fields
+      // All other pages: send image so Claude sees visual context, annotations, and spatial references
+      const skipImage = pg._textRich && !pg._hasImages && !pg._hasFormFields;
+      if (skipImage) return;
       if (!f.textContent || f.type === "dwg") {
         parts.push({ type: "text", text: `${pageLabel}:` });
       }

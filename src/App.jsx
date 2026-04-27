@@ -400,8 +400,8 @@ async function classifyPageWithAI(b64, pageNum, filename, apiKey) {
     });
     const data = await resp.json();
     const raw = (data.content || []).map(b => b.text || "").join("");
-    const m = raw.match(/\{[\s\S]*?\}/);
-    if (m) { const p = JSON.parse(m[0]); return PAGE_CATEGORIES.includes(p.category) ? p.category : "Other"; }
+    const p = extractJson(raw);
+    if (p) return PAGE_CATEGORIES.includes(p.category) ? p.category : "Other";
   } catch { /* ignore */ }
   return "Other";
 }
@@ -439,8 +439,8 @@ async function classifyFileWithAI(processedFile) {
     });
     const data = await resp.json();
     const raw = (data.content || []).map(b => b.text || "").join("");
-    const m = raw.match(/\{[\s\S]*?\}/);
-    if (m) { const p = JSON.parse(m[0]); return { category: FILE_CATEGORIES.includes(p.category) ? p.category : "Unclassified", confidence: p.confidence || "low" }; }
+    const p = extractJson(raw);
+    if (p) return { category: FILE_CATEGORIES.includes(p.category) ? p.category : "Unclassified", confidence: p.confidence || "low" };
   } catch { /* ignore */ }
   return { category: "Unclassified", confidence: "low" };
 }
@@ -793,6 +793,30 @@ function UploadBox({ label, files, onAdd, onRemove, onUpdateFile, color = "#888"
 
 // ─── Claude API ───────────────────────────────────────────────────────────────
 
+// Extracts and parses JSON from a raw Claude response string.
+// Tries: code fence → brace-balanced scan → jsonrepair fallback.
+function extractJson(raw) {
+  const fence = raw.match(/```(?:json)?\s*([\s\S]*?)```/);
+  let candidate = fence ? fence[1].trim() : null;
+
+  if (!candidate) {
+    const start = raw.indexOf('{');
+    if (start !== -1) {
+      let depth = 0, end = -1;
+      for (let i = start; i < raw.length; i++) {
+        if (raw[i] === '{') depth++;
+        else if (raw[i] === '}') { depth--; if (depth === 0) { end = i; break; } }
+      }
+      if (end !== -1) candidate = raw.slice(start, end + 1);
+    }
+  }
+
+  if (!candidate) return null;
+  try { return JSON.parse(candidate); } catch {}
+  try { return JSON.parse(jsonrepair(candidate)); } catch {}
+  return null;
+}
+
 async function callAPI(parts, retries = 2, apiKey = "") {
   for (let attempt = 0; attempt <= retries; attempt++) {
     try {
@@ -815,14 +839,10 @@ async function callAPI(parts, retries = 2, apiKey = "") {
       }
       const raw = (data.content || []).map(b => b.text || "").join("");
       if (!raw.trim()) throw new Error("Empty response");
-      const m = raw.match(/```json\s*([\s\S]*?)```/) || raw.match(/```\s*([\s\S]*?)```/) || raw.match(/(\{[\s\S]*\})/);
-      if (!m) throw new Error("JSON not found");
-      try { return JSON.parse(m[1]); } catch {}
-      try { return JSON.parse(jsonrepair(m[1])); }
-      catch (parseErr) {
-        if (attempt < retries) { await new Promise(r => setTimeout(r, 1500 * (attempt + 1))); continue; }
-        throw new Error(`JSON parse failed: ${parseErr.message}`);
-      }
+      const result = extractJson(raw);
+      if (result) return result;
+      if (attempt < retries) { await new Promise(r => setTimeout(r, 1500 * (attempt + 1))); continue; }
+      throw new Error("JSON parse failed after all repair attempts");
     } catch (e) {
       if (attempt === retries) throw e;
       await new Promise(r => setTimeout(r, 1500 * (attempt + 1)));

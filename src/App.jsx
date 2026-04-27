@@ -48,13 +48,18 @@ async function pdfToPages(file, onProg, sig) {
     if (sig?.aborted) throw new DOMException("Aborted", "AbortError");
     const page = await pdf.getPage(i);
 
-    // ── Text extraction with layout reconstruction ──
+    // ── Text + annotations extraction (parallel) ──
     let pageText = null;
     let isTextRich = false;
+    let hasFormFields = false;
     try {
-      const tc = await page.getTextContent();
+      const [tc, annotations] = await Promise.all([
+        page.getTextContent(),
+        page.getAnnotations().catch(() => []),
+      ]);
+
+      // Text layer reconstruction
       if (tc.items.length > 0) {
-        // Group items into lines by Y coordinate (PDF coordinate system: Y increases upward)
         const LINE_TOL = 4;
         const buckets = new Map();
         for (const item of tc.items) {
@@ -63,19 +68,37 @@ async function pdfToPages(file, onProg, sig) {
           if (!buckets.has(yKey)) buckets.set(yKey, []);
           buckets.get(yKey).push({ x: item.transform[4], str: item.str });
         }
-        // Sort lines top-to-bottom (higher Y = higher on page in PDF coords)
         const sortedLines = [...buckets.entries()]
           .sort((a, b) => b[0] - a[0])
-          .map(([, items]) => {
-            items.sort((a, b) => a.x - b.x);
-            return items.map(it => it.str).join("").replace(/\s{2,}/g, " ").trim();
-          })
+          .map(([, items]) => { items.sort((a, b) => a.x - b.x); return items.map(it => it.str).join("").replace(/\s{2,}/g, " ").trim(); })
           .filter(l => l.length > 0);
         const reconstructed = sortedLines.join("\n");
         if (reconstructed.length > 20) {
           pageText = reconstructed.slice(0, 8000);
           isTextRich = reconstructed.length > 150;
         }
+      }
+
+      // Annotations: form fields (checkboxes, inputs) + comments
+      const annotLines = [];
+      for (const ann of annotations) {
+        if (ann.subtype === "Widget") {
+          const val = ann.fieldValue;
+          const name = ann.alternativeText || ann.fieldName || "";
+          if (ann.checkBox || ann.radioButton) {
+            const checked = val && val !== "Off" && val !== "";
+            if (checked) { annotLines.push(`☑ ${name}: ${val}`); hasFormFields = true; }
+          } else if (ann.fieldType === "Tx" && val) {
+            annotLines.push(`[FIELD] ${name}: ${val}`); hasFormFields = true;
+          } else if (ann.fieldType === "Ch" && val) {
+            annotLines.push(`[SELECT] ${name}: ${val}`); hasFormFields = true;
+          }
+        } else if ((ann.subtype === "Text" || ann.subtype === "FreeText") && ann.contents) {
+          annotLines.push(`[COMMENT] ${ann.contents}`);
+        }
+      }
+      if (annotLines.length > 0) {
+        pageText = (pageText ? pageText + "\n\n" : "") + "FORM DATA:\n" + annotLines.join("\n");
       }
     } catch { /* ignore */ }
 
@@ -114,7 +137,7 @@ async function pdfToPages(file, onProg, sig) {
     previewCanvas.getContext("2d").drawImage(canvas, 0, 0, previewCanvas.width, previewCanvas.height);
     const preview = previewCanvas.toDataURL("image/jpeg", 0.7);
 
-    pages.push({ b64, preview, mediaType, text: pageText, _textRich: isTextRich, pageNum: i });
+    pages.push({ b64, preview, mediaType, text: pageText, _textRich: isTextRich || hasFormFields, pageNum: i });
     onProg?.(Math.round(i / n * 100));
   }
   return { pages, type: "pdf", filename: file.name, ext: "PDF" };
@@ -861,8 +884,10 @@ function filesToParts(files, fallbackLabel) {
     (f.pages || []).filter(p => p.b64 && p._selected !== false).forEach((pg, pi) => {
       const pageLabel = `${fullLabel}${pi > 0 ? ` p.${pi + 1}` : ""}`;
       if (pg.text) parts.push({ type: "text", text: `${pageLabel} — extracted text (use for exact dimensions, materials and specs):\n${pg.text}` });
-      // Always send image — PDF forms need visual reading for checkbox states (✓)
-      // Text-rich pages still need image to show which checkboxes are checked
+      // Form pages with extracted annotations don't need image — FORM DATA section carries checkbox state
+      // Text-rich pages without form fields also skip image — text layer is sufficient
+      // Visual pages (scans, drawings, no text) always need image
+      if (pg._textRich) return;
       if (!f.textContent || f.type === "dwg") {
         parts.push({ type: "text", text: `${pageLabel}:` });
       }

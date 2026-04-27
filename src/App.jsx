@@ -930,8 +930,11 @@ async function callAPI(parts, retries = 2, apiKey = "") {
   }
 }
 
+const MAX_PAYLOAD_B64 = 24_000_000; // ~24MB base64 — safe buffer under 32MB API limit
+
 function filesToParts(files, fallbackLabel) {
   const parts = [];
+  let totalB64 = 0;
   (files || []).forEach((f, fi) => {
     const fileLabel = f._label || `${fallbackLabel} ${fi + 1}`;
     const fullLabel = `${fileLabel} [${f.ext || f.type?.toUpperCase() || "FILE"}: ${f.filename}]`;
@@ -941,12 +944,17 @@ function filesToParts(files, fallbackLabel) {
       parts.push({ type: "text", text: `<content>\n${f.textContent}\n</content>` });
     }
     (f.pages || []).filter(p => p.b64 && p._selected !== false).forEach((pg, pi) => {
-      const pageLabel = `${fullLabel}${pi > 0 ? ` p.${pi + 1}` : ""}`;
       if (pg.text) parts.push({ type: "text", text: `<page num="${pg.pageNum || pi + 1}">\n${pg.text}\n</page>` });
       // Skip image only for pure text pages with no embedded images and no form fields
       // All other pages: send image so Claude sees visual context, annotations, and spatial references
       const skipImage = pg._textRich && !pg._hasImages && !pg._hasFormFields;
       if (skipImage) return;
+      const imgSize = pg.b64.length;
+      if (totalB64 + imgSize > MAX_PAYLOAD_B64) {
+        parts.push({ type: "text", text: `<page num="${pg.pageNum || pi + 1}">[Image skipped — payload limit reached; rely on extracted text above.]</page>` });
+        return;
+      }
+      totalB64 += imgSize;
       if (!f.textContent || f.type === "dwg") {
         parts.push({ type: "text", text: `<page num="${pg.pageNum || pi + 1}">` });
       }
@@ -958,7 +966,7 @@ function filesToParts(files, fallbackLabel) {
 }
 
 // ─── PDF chunked pre-extraction ───────────────────────────────────────────────
-const PDF_CHUNK_SIZE = 12;
+const MAX_BATCH_B64 = 20_000_000; // ~20MB base64 per Haiku batch — safe under 32MB API limit
 const PDF_DIRECT_LIMIT = 15;
 
 async function preExtractPageBatch(pages, fileLabel, apiKey) {
@@ -987,7 +995,7 @@ async function preProcessLargeFiles(files, apiKey, onStatus) {
   const result = [];
   for (const f of files) {
     const activePgs = (f.pages || []).filter(p => p.b64 && p._selected !== false);
-    if (activePgs.length <= PDF_DIRECT_LIMIT) { result.push(f); continue; }
+    if (activePgs.length <= PDF_DIRECT_LIMIT || f._skipPreExtract) { result.push(f); continue; }
 
     const label = f._label || f.filename;
     const chunks = [];
@@ -3238,7 +3246,7 @@ Return ONLY valid JSON in exactly the same structure with translated values:
         if (packedData) {
           filesToProcess = [
             ...labeledFiles.filter(f => f.type !== "image"),
-            { ...packedData, _label: "REFERENCES", _category: "References" },
+            { ...packedData, _label: "REFERENCES", _category: "References", _skipPreExtract: true },
           ];
         }
       } catch (e) {

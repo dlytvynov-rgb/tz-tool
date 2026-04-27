@@ -3223,7 +3223,7 @@ Return ONLY valid JSON in exactly the same structure with translated values:
 LANGUAGE: input materials may be in any language — Ukrainian, Russian, English, mixed. Recognize requirements regardless of language. Always respond ONLY in English.
 
 WORKING PRINCIPLES:
-1. Extract ONLY information explicitly stated in the provided documents. Do NOT infer, assume, or add knowledge from outside the files. If a value is absent — mark as missing, never guess.
+1. Extract EVERYTHING explicitly stated in the provided documents — miss nothing. Do NOT add knowledge from outside the files (no assumptions, no guesses). If a requirement is in the files but not in the SOW template — still extract it under "Client Requirements". If a value is absent from all files — mark as missing.
 2. Read ALL files together — cross-reference brief with drawings, references with comments, specs with each other. Each <document> tag is a separate source — track which source each finding comes from.
 3. Think like an artist: "what do I need to do to start this project without rework?"
 4. Extract ALL links (URLs) from any source — furniture, catalogs, Pinterest, Behance, brands, colors, maps — and attach to the specific requirement

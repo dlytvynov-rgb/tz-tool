@@ -551,7 +551,8 @@ function useFileList() {
   }, [bump]);
   const remove = useCallback((idx) => { ref.current = ref.current.filter((_, i) => i !== idx); bump(); }, [bump]);
   const updateById = useCallback((id, patch) => { ref.current = ref.current.map(x => x._id === id ? { ...x, ...patch } : x); bump(); }, [bump]);
-  return { files: ref.current, ref, add, remove, updateById };
+  const clearAll = useCallback(() => { ref.current = []; bump(); }, [bump]);
+  return { files: ref.current, ref, add, remove, updateById, clearAll };
 }
 
 // ─── Page Gallery ─────────────────────────────────────────────────────────────
@@ -3550,16 +3551,26 @@ RESPOND ONLY WITH JSON:
         </div>
 
         {/* CTA */}
-        <button
-          onClick={parseTz}
-          disabled={parsing}
-          style={{ width: "100%", background: parsing ? "#444" : "#1a1a1a", color: "#f2f0ec", border: "none", padding: "16px", fontSize: 13, letterSpacing: "0.14em", fontFamily: "monospace", cursor: parsing ? "not-allowed" : "pointer", borderRadius: 8, display: "flex", alignItems: "center", justifyContent: "center", gap: 10 }}
-        >
-          {parsing
-            ? <><div style={{ width: 14, height: 14, border: "2px solid #666", borderTop: "2px solid #fff", borderRadius: "50%", animation: "spin 0.7s linear infinite" }} /><span style={{ fontSize: 11, letterSpacing: "0.05em", maxWidth: 500, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{parseStatus || "ANALYZING BRIEF…"}</span></>
-            : "CREATE SOWa →"
-          }
-        </button>
+        <div style={{ display: "flex", gap: 8 }}>
+          <button
+            onClick={parseTz}
+            disabled={parsing}
+            style={{ flex: 1, background: parsing ? "#444" : "#1a1a1a", color: "#f2f0ec", border: "none", padding: "16px", fontSize: 13, letterSpacing: "0.14em", fontFamily: "monospace", cursor: parsing ? "not-allowed" : "pointer", borderRadius: 8, display: "flex", alignItems: "center", justifyContent: "center", gap: 10 }}
+          >
+            {parsing
+              ? <><div style={{ width: 14, height: 14, border: "2px solid #666", borderTop: "2px solid #fff", borderRadius: "50%", animation: "spin 0.7s linear infinite" }} /><span style={{ fontSize: 11, letterSpacing: "0.05em", maxWidth: 500, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{parseStatus || "ANALYZING BRIEF…"}</span></>
+              : "CREATE SOWa →"
+            }
+          </button>
+          {(allFilesList.files.length > 0 || briefText.trim() || selectedTypes.length > 0) && !parsing && (
+            <button
+              onClick={() => { allFilesList.clearAll(); setBriefText(""); setSelectedTypes([]); setErr(""); }}
+              style={{ background: "#fff", border: "1px solid #ddd", color: "#999", padding: "16px 18px", fontSize: 11, letterSpacing: "0.1em", fontFamily: "monospace", cursor: "pointer", borderRadius: 8, whiteSpace: "nowrap" }}
+            >
+              CLEAR ALL
+            </button>
+          )}
+        </div>
 
         {/* Return to active session */}
         {tzRooms.length > 0 && (

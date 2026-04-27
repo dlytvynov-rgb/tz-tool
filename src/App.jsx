@@ -3214,24 +3214,7 @@ WORKING PRINCIPLES:
 3. Extract ALL links (URLs) from any source — furniture, catalogs, Pinterest, Behance, brands, colors, maps — and attach to the specific requirement
 4. Flag contradictions between files — if the brief conflicts with a drawing, or a reference doesn't match the text description
 
-PDF FORMS WITH CHECKBOXES: The Archivizer "Master Direction" form (and similar brief forms) uses checkboxes that clients tick to make selections. A filled checkbox (✓ or a check mark) next to an option means the client SELECTED that option — it is a confirmed client requirement, NOT a default. An empty checkbox means NOT selected.
-Rules:
-- Read ALL pages before concluding any field is missing
-- A checked option = source: "brief" in delivery_spec — even if the value happens to match the template default
-- Multiple checkboxes checked for one field = list all selected values (e.g. "Still images, Animation")
-- Never mark a field as missing or unclear if at least one checkbox is checked for it
-- Handwritten/typed text in form fields also counts as source: "brief"
-Examples from the Archivizer Master Direction form:
-  • "Concept" ✓ → Type of project = "Concept" (source: brief)
-  • "4K - 3840 x 2160" ✓ → Aspect ratio = "4K - 3840 x 2160" (source: brief)
-  • "300" ✓ → DPI = "300" (source: brief)
-  • "Naming provided" ✓ → Naming = "Naming provided" (source: brief)
-  • "JPEG" ✓ → File Format = "JPEG" (source: brief)
-  • "For marketing" ✓ → Purpose = "For marketing" (source: brief)
-  • "Day lighting" ✓ + "Afternoon light" ✓ → Lighting Setup = "Day lighting, Afternoon light" (source: brief)
-  • "All artificial lights should be turned on" ✓ → Artificial Lighting = "All on" (source: brief)
-  • "High contrast soft shadows" ✓ → Shadows = "High contrast soft shadows" (source: brief)
-  • "Modify placement for better composition" ✓ → Furniture Placement = "Modify for better composition" (source: brief)
+PDF FORMS: Pages from Archivizer "Master Direction" forms include a "FORM DATA:" section with pre-extracted field values (☑ = checked checkbox, [FIELD] = typed text, [COMMENT] = annotation). Treat all FORM DATA entries as source: "brief" — confirmed client selections, not defaults.
 
 DWG/DXF DRAWINGS: if DWG or DXF is present — mandatory:
 - Extract room names from "LABELS" and "LAYERS" — they form the rooms list

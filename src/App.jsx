@@ -1214,52 +1214,6 @@ const SOW_TEMPLATES = {
       "Render elements": "None",
     },
   },
-  "Masterplan": {
-    items: [
-      { text: "Site plan with scale", cat: "Drawings" },
-      { text: "Building typology", cat: "Client Requirements" },
-      { text: "Landscaping and greenery", cat: "Client Requirements" },
-      { text: "Roads and infrastructure", cat: "Client Requirements" },
-      { text: "Time of day and season", cat: "References" },
-      { text: "Presentation style", cat: "Client Requirements" },
-      { text: "Format and deadline", cat: "Technical Requirements" },
-    ],
-    defaults: {},
-  },
-  "Product Rendering": {
-    items: [
-      { text: "3D model: provided by client (.3ds / .fbx / .obj) or modeled from scratch", cat: "Furniture & Objects" },
-      { text: "If client model: compliance with references, no geometry defects", cat: "Client Requirements" },
-      { text: "Technical drawings or CAD file (DWG, PDF, wireframe) — if modeling", cat: "Drawings" },
-      { text: "If no drawings: product dimensions (H / W / D) + units", cat: "Client Requirements" },
-      { text: "Product photos: front, side, back, 3/4 angle", cat: "Furniture & Objects" },
-      { text: "Detail close-up photos", cat: "Furniture & Objects" },
-      { text: "Materials and finishes: photos or material reference links", cat: "Materials & Finishes" },
-      { text: "If no material: texture links (min 2000x2000px) + HEX codes", cat: "Materials & Finishes" },
-      { text: "Background: studio / interior / outdoor / other", cat: "Client Requirements" },
-      { text: "If studio background: color or gradient (HEX)", cat: "Client Requirements" },
-      { text: "If scene: description or environment reference", cat: "References" },
-      { text: "Lighting: studio (default) / natural / decorative / mixed", cat: "References" },
-      { text: "Mood / time of day (default: day)", cat: "References" },
-      { text: "Camera angles: Front / Side / Hero Shot / Close-up / 3/4 / other", cat: "Client Requirements" },
-      { text: "Number of angles", cat: "Technical Requirements" },
-      { text: "Style references with comments — what exactly to take", cat: "References" },
-      { text: "Resolution: 2K / 4K / 5K", cat: "Technical Requirements" },
-      { text: "File format: JPEG / PNG / TIFF / PSD", cat: "Technical Requirements" },
-      { text: "DPI: 72 (web) / 300 (print)", cat: "Technical Requirements" },
-      { text: "Aspect ratio: 16x9 / 1x1 / 4x3 / other", cat: "Technical Requirements" },
-      { text: "Number of final images", cat: "Technical Requirements" },
-      { text: "Purpose: website / catalog / presentation / social media / print", cat: "Technical Requirements" },
-      { text: "Deadline", cat: "Technical Requirements" },
-    ],
-    defaults: {
-      "Resolution: 2K / 4K / 5K": "4K",
-      "DPI: 72 (web) / 300 (print)": "72",
-      "File format: JPEG / PNG / TIFF / PSD": "JPEG",
-      "Lighting: studio (default) / natural / decorative / mixed": "studio",
-      "Mood / time of day (default: day)": "day",
-    },
-  },
   "3D Modeling": {
     items: [
       { text: "Model Purpose", cat: "Modeling Parameters" },
@@ -1722,8 +1676,6 @@ const TYPE_DESCRIPTIONS = {
   "Exterior": "Building exterior render from facade drawings with surroundings, landscape and sky. Optional: aerial drone angle. Requires plans, facades and sections.",
   "Lifestyle": "Advertising product scene in interior or outdoors. Three workflows: Our Vision (studio creates), Your Vision (your reference), Template (library scene).",
   "Silo": "Clean product shots on neutral background (white / transparent / black). Standard for e-commerce, catalogs and marketplaces.",
-  "Masterplan": "Top-view of masterplan with buildings, landscape, roads and infrastructure. For development projects, urban planning and developer presentations.",
-  "Product Rendering": "Photorealistic shots of furniture, decor or equipment in studio or curated scene. For catalogs, websites and social media.",
   "3D Modeling": "3D model creation from drawings or photos, no rendering. Output: .max / .fbx / .obj. Includes AR preparation (GLB/USDZ).",
   "AR Rendering": "Optimized 3D model for AR/VR apps and web configurators. Output: GLB/USDZ. Requires polygon budget, texture resolution, UV mapping and file size specs.",
   "Floorplan": "Architectural floor plan from above in 3D or schematic style. For real estate sales, developer websites and presentations.",
@@ -1736,7 +1688,7 @@ const TYPE_DESCRIPTIONS = {
 };
 
 const CAT_COLOR = {
-  // Interior / Exterior / Aerial / Real Estate / Design / Floorplan / Masterplan
+  // Interior / Exterior / Aerial / Real Estate / Design / Floorplan
   "References": "#27ae60",
   "Materials & Finishes": "#8e44ad",
   "Furniture & Objects": "#2980b9",

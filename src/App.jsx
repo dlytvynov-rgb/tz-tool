@@ -1,5 +1,6 @@
 import { useState, useRef, useCallback, useMemo, useEffect } from "react";
 import { LibreDwg, Dwg_File_Type } from "@mlightcad/libredwg-web";
+import { jsonrepair } from "jsonrepair";
 
 // ─── SheetJS (Excel) ──────────────────────────────────────────────────────────
 async function loadXLSX() {
@@ -791,24 +792,6 @@ function UploadBox({ label, files, onAdd, onRemove, onUpdateFile, color = "#888"
 }
 
 // ─── Claude API ───────────────────────────────────────────────────────────────
-function repairJson(str) {
-  // Fix unescaped control characters inside JSON string values
-  let result = '', inString = false, i = 0;
-  while (i < str.length) {
-    const c = str[i];
-    if (inString) {
-      if (c === '\\') { result += c + (str[i + 1] || ''); i += 2; continue; }
-      if (c === '"') { inString = false; result += c; i++; continue; }
-      if (c === '\n') { result += '\\n'; i++; continue; }
-      if (c === '\r') { result += '\\r'; i++; continue; }
-      if (c === '\t') { result += '\\t'; i++; continue; }
-    } else {
-      if (c === '"') inString = true;
-    }
-    result += c; i++;
-  }
-  return result;
-}
 
 async function callAPI(parts, retries = 2, apiKey = "") {
   for (let attempt = 0; attempt <= retries; attempt++) {
@@ -835,7 +818,7 @@ async function callAPI(parts, retries = 2, apiKey = "") {
       const m = raw.match(/```json\s*([\s\S]*?)```/) || raw.match(/```\s*([\s\S]*?)```/) || raw.match(/(\{[\s\S]*\})/);
       if (!m) throw new Error("JSON not found");
       try { return JSON.parse(m[1]); } catch {}
-      try { return JSON.parse(repairJson(m[1])); }
+      try { return JSON.parse(jsonrepair(m[1])); }
       catch (parseErr) {
         if (attempt < retries) { await new Promise(r => setTimeout(r, 1500 * (attempt + 1))); continue; }
         throw new Error(`JSON parse failed: ${parseErr.message}`);

@@ -3190,6 +3190,8 @@ WORKING PRINCIPLES:
 3. Extract ALL links (URLs) from any source — furniture, catalogs, Pinterest, Behance, brands, colors, maps — and attach to the specific requirement
 4. Flag contradictions between files — if the brief conflicts with a drawing, or a reference doesn't match the text description
 
+PDF FORMS WITH CHECKBOXES: If you see a PDF form (Archivizer Master Direction or similar brief form), a filled checkbox (✓ or a check mark) next to an option means the client SELECTED that option — treat it as a confirmed value. An empty checkbox means NOT selected. Never mark a field as missing or unclear if you can see a checked option for it. Example: if "4K - 3840 x 2160" has a ✓ next to it → Resolution = 4K. If "JPEG" has ✓ → File Format = JPEG. If "For marketing" has ✓ → Purpose = For marketing. Read ALL pages of the form before concluding a field is missing.
+
 DWG/DXF DRAWINGS: if DWG or DXF is present — mandatory:
 - Extract room names from "LABELS" and "LAYERS" — they form the rooms list
 - Extract dimensions — add to "Drawings" category with img_ref pointing to this file

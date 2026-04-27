@@ -3573,12 +3573,20 @@ RESPOND ONLY WITH JSON:
         {(() => {
           const ready = readyFiles(allFilesList);
           const loading = (allFilesList.files || []).filter(f => f._loading);
-          const totalPages = ready.reduce((sum, f) => sum + (f.pages || []).filter(p => p._selected !== false && p.b64).length, 0);
+          const imgFiles = ready.filter(f => f.type === "image");
+          const nonImgFiles = ready.filter(f => f.type !== "image");
+          const willPack = imgFiles.length > 6;
+          const imgPages = willPack ? Math.ceil(imgFiles.length / 4) : imgFiles.length;
+          const nonImgPages = nonImgFiles.reduce((sum, f) => sum + (f.pages || []).filter(p => p._selected !== false && p.b64).length, 0);
+          const totalPages = imgPages + nonImgPages;
           const tooMany = totalPages > 80;
           if (!ready.length && !loading.length) return null;
           return (
             <div style={{ marginBottom: 12, display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
               {loading.length > 0 && <span style={{ fontSize: 10, fontFamily: "monospace", color: "#e67e22", background: "#fff8f0", border: "1px solid #f0c060", padding: "3px 8px", borderRadius: 4 }}>⏳ processing: {loading.length} file{loading.length > 1 ? "s" : ""}</span>}
+              {willPack && <span style={{ fontSize: 10, fontFamily: "monospace", color: "#2980b9", background: "#f0f6fc", border: "1px solid #acd", padding: "3px 8px", borderRadius: 4 }}>
+                {imgFiles.length} images → packed into PDF ({imgPages} pages)
+              </span>}
               {totalPages > 0 && <span style={{ fontSize: 10, fontFamily: "monospace", color: tooMany ? "#e74c3c" : "#555", background: tooMany ? "#fff5f5" : "#f5f4f1", border: `1px solid ${tooMany ? "#e74c3c44" : "#ddd"}`, padding: "3px 8px", borderRadius: 4 }}>
                 {tooMany ? "⚠ " : ""}{totalPages} pages to API{tooMany ? " — too many, reduce selection" : ""}
               </span>}

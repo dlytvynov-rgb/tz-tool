@@ -861,9 +861,8 @@ function filesToParts(files, fallbackLabel) {
     (f.pages || []).filter(p => p.b64 && p._selected !== false).forEach((pg, pi) => {
       const pageLabel = `${fullLabel}${pi > 0 ? ` p.${pi + 1}` : ""}`;
       if (pg.text) parts.push({ type: "text", text: `${pageLabel} — extracted text (use for exact dimensions, materials and specs):\n${pg.text}` });
-      // Text-rich pages (e.g. TZ docs, specs): skip image — text layer is sufficient
-      // Visual pages (scans, moodboards, drawings): always send image
-      if (pg._textRich) return;
+      // Always send image — PDF forms need visual reading for checkbox states (✓)
+      // Text-rich pages still need image to show which checkboxes are checked
       if (!f.textContent || f.type === "dwg") {
         parts.push({ type: "text", text: `${pageLabel}:` });
       }

@@ -3289,9 +3289,13 @@ Templates by type:
 ${sowTemplatesText}
 
 - sow_missing: template items that are COMPLETELY absent from input materials.
-  - If the item has a default in the template → format: "Item name — not specified. Will use: [default]. Confirm or send replacement"
+  - If the item has a default in the template → DO NOT ask the client. Format: "Item name — not specified. Will use: [default]. Confirm or send replacement"
   - If no default → format: "Item name — what the client needs to provide"
-- sow_unclear: template items that are present but incomplete or unclear. Format: "Item name — found: [what exists]. Ask client: '[question phrased directly to the client, as if writing to them]'"
+  - Never add to sow_missing if the value can be inferred from context (e.g. geolocation provided → no need to ask about regional electrical standards)
+- sow_unclear: template items that are present but incomplete or unclear.
+  - Format: "Item name — found: [what exists]. Ask client: '[question phrased directly to the client, as if writing to them]'"
+  - One question per item — specific, not generic. Bad: "What materials?" Good: "Please specify RAL/HEX code for the living room accent wall"
+  - Do NOT ask if the answer is obvious from context or can be resolved with the template default
 
 TASK 7 — delivery_spec:
 For each SOW template item where you found a concrete value in the client materials, report:
@@ -3356,7 +3360,15 @@ RESPOND ONLY WITH JSON:
       setTzByRoom(byRoom);
       setTzAnnotation(result.project_annotation || "");
       setTzClientComments(result.client_comments || []);
-      setTzSowMissing(result.sow_missing || []);
+      // Filter sow_missing: items with a default ("Will use:") stay visible for PM awareness
+      // but items that have defaults AND are confirmed by brief go to delivery_spec, not missing
+      const detectedTypeForFilter = result.project_type || "";
+      const filterTemplate = SOW_TEMPLATES[detectedTypeForFilter];
+      const templateDefaults = filterTemplate?.defaults || {};
+      const rawMissing = result.sow_missing || [];
+      // Keep all missing items — PM needs to see defaults applied. Filter only truly redundant duplicates.
+      const filteredMissing = rawMissing.filter((m, i, arr) => arr.indexOf(m) === i); // dedupe only
+      setTzSowMissing(filteredMissing);
       setTzSowUnclear(result.sow_unclear || []);
       // Build delivery_spec strictly from template — 1:1 with SOW_TEMPLATES items, no more no less
       const detectedType = result.project_type || "";

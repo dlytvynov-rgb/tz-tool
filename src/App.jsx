@@ -594,7 +594,7 @@ function useFileList() {
 
     const id = "f" + Date.now() + "_" + Math.random().toString(36).slice(2);
     const ctrl = new AbortController();
-    ref.current = [...ref.current, { _id: id, _loading: true, _progress: 0, _ctrl: ctrl, filename: file.name, preview: null, pages: [], type: null }];
+    ref.current = [...ref.current, { _id: id, _loading: true, _progress: 0, _ctrl: ctrl, filename: file.name, _size: file.size, preview: null, pages: [], type: null }];
     bump();
     try {
       const buf = await file.arrayBuffer();
@@ -3639,10 +3639,14 @@ RESPOND ONLY WITH JSON:
           const nonImgPages = nonImgFiles.reduce((sum, f) => sum + (f.pages || []).filter(p => p._selected !== false && p.b64).length, 0);
           const totalPages = imgPages + nonImgPages;
           const tooMany = totalPages > 80;
+          const largeFiles = [...ready, ...loading].filter(f => f._size > 30 * 1024 * 1024);
           if (!ready.length && !loading.length) return null;
           return (
             <div style={{ marginBottom: 12, display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
               {loading.length > 0 && <span style={{ fontSize: 10, fontFamily: "monospace", color: "#e67e22", background: "#fff8f0", border: "1px solid #f0c060", padding: "3px 8px", borderRadius: 4 }}>⏳ processing: {loading.length} file{loading.length > 1 ? "s" : ""}</span>}
+              {largeFiles.length > 0 && <span style={{ fontSize: 10, fontFamily: "monospace", color: "#e67e22", background: "#fff8f0", border: "1px solid #f0c060", padding: "3px 8px", borderRadius: 4 }}>
+                ⚠ large file{largeFiles.length > 1 ? "s" : ""}: {largeFiles.map(f => `${f.filename} (${(f._size / 1024 / 1024).toFixed(0)}MB)`).join(", ")} — may slow down processing
+              </span>}
               {willPack && <span style={{ fontSize: 10, fontFamily: "monospace", color: "#2980b9", background: "#f0f6fc", border: "1px solid #acd", padding: "3px 8px", borderRadius: 4 }}>
                 {imgFiles.length} images → packed into PDF ({imgPages} pages)
               </span>}

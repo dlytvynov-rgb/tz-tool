@@ -3395,12 +3395,20 @@ Rules for each extracted item:
 - REFERENCES: for EACH reference image, extract the SPECIFIC ASPECT to adopt. Not just "style reference" — write what exactly to take: "Reference — warm golden-hour lighting, soft shadows" or "Reference — composition: sofa facing window, low camera angle" or "Reference — matte concrete wall finish". State color palette / lighting type / mood / proportions / material finish — whichever is visible and relevant.
 - FLOOR PLAN CAMERAS: if a DWG/floor plan is present, numbered camera markers (triangles, arrows, numbered circles) = camera positions. Extract EACH as a separate item in the "Client Requirements" category: "Camera [N] — position: [location, e.g. 'facing North from living room entrance']". Use img_ref pointing to the drawing page.
 - WINDOW & DOOR SCHEDULES: if a window schedule or door schedule is found in drawings → place in the "Drawings" category with img_ref pointing to that drawing page.
-- ELEVATIONS: wall elevations, cabinet/kitchen elevations, section drawings → place in the "Drawings" category with img_ref pointing to the drawing page.
+- ELEVATIONS: wall elevations, cabinet/kitchen elevations, section drawings → place in "Drawings" category with img_ref pointing to the drawing page.
+  - Identify drawing type: PRECISE (has dimensions, scale bar, measurements) or SCHEMATIC (intent-only sketch, no scale).
+  - From PRECISE elevation: extract opening sizes, heights, shelf positions, dimensions shown.
+  - From SCHEMATIC elevation: extract INTENT — what client wants where ("TV unit centered", "shelf niche at 1200mm height", "backlit panel left side", "mirror above console"). Do not skip schematic elevations even if no dimensions.
+  - If BOTH a DWG/precise drawing AND a schematic PDF elevation exist for the same wall or room — cross-reference them: note what the schematic intends and what dimensions/structure the DWG provides.
+  - Each element shown on an elevation (fixture, niche, panel, opening, finish zone) → extract as a separate item with img_ref.
 Structure: { "Room": { "Category": [ {id, text, quote, stage, source, img_ref, links} ] } }
 
 TASK 5 — conflicts:
 Contradictions between input files. Each entry: "Conflict: [what contradicts what]. Source A: [file/quote]. Source B: [file/quote]. Question: [what needs clarification]"
 Example: "Conflict: living room wall color. Source A: brief — 'walls dark grey'. Source B: moodboard p.2 — reference with light walls. Question: which version is priority?"
+- DRAWING vs BRIEF: if a schematic elevation shows an element (built-in wardrobe, niche, shelf) but the DWG shows a structural element (door, column, beam) in the same wall position — flag as conflict.
+- ELEVATION vs TEXT: if an elevation drawing shows one finish or material but the brief text states another — flag as conflict.
+- PRECISE vs SCHEMATIC: if DWG dimensions and schematic elevation intent are incompatible (e.g. schematic shows wide unit but DWG wall is too narrow) — flag as conflict.
 
 // TASK 6 (roadmap) — disabled, UI hidden. Re-enable when roadmap view is restored.
 
@@ -3430,7 +3438,7 @@ Structure: [ { file: "file label", page: N, found: [ { id, type, description } ]
 - file: file label (e.g. "MOODBOARD 1", "DRAWINGS", "BRIEF TEXT")
 - page: page number (1 if single page)
 - found: list of what was found on this page
-- type: "furniture" | "material" | "lighting" | "style_ref" | "time_of_day" | "weather" | "render_quality" | "camera" | "dimensions" | "logo" | "comment" | "other"
+- type: "furniture" | "material" | "lighting" | "style_ref" | "time_of_day" | "weather" | "render_quality" | "camera" | "dimensions" | "logo" | "comment" | "elevation_precise" | "elevation_schematic" | "section" | "other"
 - description: brief description of what exactly (product name, brand, description)
 Include EVERYTHING on the page — furniture, materials, style references, time of day, weather, render quality, angles, dimensions.
 

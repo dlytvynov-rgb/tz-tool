@@ -972,6 +972,114 @@ async function callAPI(parts, retries = 2, apiKey = "") {
   }
 }
 
+const TZ_TOOL_SCHEMA = {
+  name: "extract_project_requirements",
+  description: "Extract structured project requirements from client files",
+  input_schema: {
+    type: "object",
+    properties: {
+      project_type: { type: "string" },
+      project_annotation: { type: "string" },
+      rooms: { type: "array", items: { type: "string" } },
+      tz_by_room: {
+        type: "object",
+        additionalProperties: {
+          type: "object",
+          additionalProperties: {
+            type: "array",
+            items: {
+              type: "object",
+              properties: {
+                id:    { type: "string" },
+                text:  { type: "string" },
+                quote: { type: ["string", "null"] },
+                stage: { type: "string" },
+                source: { type: "string" },
+                img_ref: {
+                  anyOf: [
+                    { type: "null" },
+                    { type: "object", properties: { file: { type: "string" }, page: { type: "number" } }, required: ["file", "page"] }
+                  ]
+                },
+                links: {
+                  type: "array",
+                  items: { type: "object", properties: { url: { type: "string" }, label: { type: "string" }, type: { type: "string" } }, required: ["url", "label", "type"] }
+                }
+              },
+              required: ["id", "text", "stage", "source"]
+            }
+          }
+        }
+      },
+      conflicts:    { type: "array", items: { type: "string" } },
+      sow_missing:  { type: "array", items: { type: "string" } },
+      sow_unclear:  { type: "array", items: { type: "string" } },
+      delivery_spec: {
+        type: "array",
+        items: {
+          type: "object",
+          properties: { key: { type: "string" }, value: { type: "string" }, source: { type: "string" } },
+          required: ["key", "value", "source"]
+        }
+      },
+      sources: {
+        type: "array",
+        items: {
+          type: "object",
+          properties: {
+            file: { type: "string" },
+            page: { type: "number" },
+            found: {
+              type: "array",
+              items: { type: "object", properties: { id: { type: "string" }, type: { type: "string" }, description: { type: "string" } }, required: ["id", "type", "description"] }
+            }
+          },
+          required: ["file", "page", "found"]
+        }
+      }
+    },
+    required: ["project_type", "project_annotation", "rooms", "tz_by_room", "conflicts", "sow_missing", "sow_unclear", "delivery_spec", "sources"]
+  }
+};
+
+async function callAPIStructured(parts, retries = 2, apiKey = "") {
+  for (let attempt = 0; attempt <= retries; attempt++) {
+    try {
+      const resp = await fetch("https://api.anthropic.com/v1/messages", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "anthropic-version": "2023-06-01",
+          "anthropic-dangerous-direct-browser-access": "true",
+          "x-api-key": apiKey,
+        },
+        body: JSON.stringify({
+          model: "claude-sonnet-4-6",
+          max_tokens: 64000,
+          temperature: 0,
+          tools: [TZ_TOOL_SCHEMA],
+          tool_choice: { type: "tool", name: "extract_project_requirements" },
+          messages: [{ role: "user", content: parts }]
+        })
+      });
+      let data; try { data = await resp.json(); } catch { throw new Error(`HTTP ${resp.status}`); }
+      if (!resp.ok) {
+        if ((resp.status === 502 || resp.status === 503 || resp.status === 529) && attempt < retries) {
+          await new Promise(r => setTimeout(r, 2000 * (attempt + 1))); continue;
+        }
+        throw new Error(`API ${resp.status}: ${data?.error?.message || ""}`);
+      }
+      const toolBlock = (data.content || []).find(b => b.type === "tool_use");
+      if (toolBlock?.input) return toolBlock.input;
+      if (attempt < retries) { await new Promise(r => setTimeout(r, 1500 * (attempt + 1))); continue; }
+      throw new Error("Structured output: no tool_use block in response");
+    } catch (e) {
+      if (attempt === retries) throw e;
+      await new Promise(r => setTimeout(r, 1500 * (attempt + 1)));
+    }
+  }
+}
+
 const MAX_PAYLOAD_B64 = 24_000_000; // ~24MB base64 — safe buffer under 32MB API limit
 
 function filesToParts(files, fallbackLabel) {
@@ -2886,14 +2994,12 @@ Structure: [ { file: "file label", page: N, found: [ { id, type, description } ]
 Include EVERYTHING on the page — furniture, materials, style references, time of day, weather, render quality, angles, dimensions.
 
 // TASK 10 (client_comments) — disabled, UI hidden. Re-enable when comments view is restored.
-
-RESPOND ONLY WITH JSON:
-{"project_type":"...","project_annotation":"...","rooms":["General","Living Room"],"tz_by_room":{"General":{"References":[{"id":"tz1","text":"Scandinavian style, natural materials, muted tones","quote":"scandinavian style, natural materials","stage":"Texturing","source":"MOODBOARD 1","img_ref":{"file":"MOODBOARD 1","page":1},"links":[]}]},"Living Room":{"Furniture & Objects":[{"id":"tz2","text":"Sofa — Minotti Lawrence, grey velvet","quote":"sofa Minotti Lawrence grey","stage":"Modeling","source":"MATERIALS 1","img_ref":{"file":"MATERIALS 1","page":2},"links":[{"url":"https://minotti.com/...","label":"Minotti Lawrence","type":"furniture"}]}]}},"conflicts":["Conflict: living room wall color. Source A: brief — 'dark grey walls'. Source B: moodboard p.2 — light interior. Question: which version is priority?"],"sources":[{"file":"MOODBOARD 1","page":2,"found":[{"id":"src1","type":"furniture","description":"Sofa Minotti Lawrence, grey velvet"},{"id":"src2","type":"style_ref","description":"Scandinavian style, natural materials"}]},{"file":"DRAWINGS","page":1,"found":[{"id":"src3","type":"dimensions","description":"Living room 6×4m, bedroom 4×3.5m"}]}],"sow_missing":["Time of day — not specified. Will use: day. Confirm or send replacement","Furniture — links or brand required for each item"],"sow_unclear":["Wall color — found: 'replace green'. Unclear: what color — need RAL/HEX"],"delivery_spec":[{"key":"Resolution","value":"4K","source":"brief"},{"key":"Time of day","value":"evening","source":"brief"}]}` }];
+` }];
 
     parts.push(...filesToParts(processedFiles, "FILE"));
 
     try {
-      const result = await callAPI(parts, 2, apiKey);
+      const result = await callAPIStructured(parts, 2, apiKey);
 
       // Validate top-level structure
       if (!result || typeof result !== 'object') throw new Error("Response is not an object");

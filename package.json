@@ -14,7 +14,7 @@
   },
   "dependencies": {
     "@mlightcad/libdxfrw-web": "^0.1.0",
-    "@mlightcad/libredwg-web": "^0.6.10",
+    "@mlightcad/libredwg-web": "^0.7.1",
     "jsonrepair": "^3.14.0",
     "pdf-lib": "^1.17.1",
     "react": "^19.2.4",

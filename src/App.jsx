@@ -39,6 +39,21 @@ async function loadPdfJs() {
     "https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js";
   return window.pdfjsLib;
 }
+
+// ─── Tesseract OCR ────────────────────────────────────────────────────────────
+let _ocrWorker = null;
+async function getOcrWorker() {
+  if (_ocrWorker) return _ocrWorker;
+  const { default: Tesseract } = await import("tesseract.js");
+  _ocrWorker = await Tesseract.createWorker(["eng", "ukr"]);
+  return _ocrWorker;
+}
+async function runOcr(canvas) {
+  const worker = await getOcrWorker();
+  const { data: { text } } = await worker.recognize(canvas);
+  return text?.trim() || "";
+}
+
 async function pdfToPages(file, onProg, sig) {
   const lib = await loadPdfJs();
   const buf = await file.arrayBuffer();
@@ -125,6 +140,15 @@ async function pdfToPages(file, onProg, sig) {
     const canvas = document.createElement("canvas");
     canvas.width = Math.round(vp.width); canvas.height = Math.round(vp.height);
     await page.render({ canvasContext: canvas.getContext("2d"), viewport: vp }).promise;
+
+    // ── OCR for scan pages (no or very little text extracted) ──
+    if (!isTextRich && (!pageText || pageText.trim().length < 30)) {
+      try {
+        const ocrText = await runOcr(canvas);
+        if (ocrText.length > 30) pageText = ocrText.slice(0, 8000);
+      } catch { /* OCR unavailable, proceed without */ }
+    }
+
     let b64, mediaType;
     if (!isTextRich) {
       // Scan / drawing — lossless PNG

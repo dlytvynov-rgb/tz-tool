@@ -1237,6 +1237,7 @@ function filesToParts(files, fallbackLabel) {
 // ─── PDF chunked pre-extraction ───────────────────────────────────────────────
 const MAX_BATCH_B64 = 20_000_000; // ~20MB base64 per Haiku batch — safe under 32MB API limit
 const PDF_DIRECT_LIMIT = 15;
+const PDF_CHUNK_SIZE = 8;
 
 async function preExtractPageBatch(pages, fileLabel, apiKey) {
   const parts = [{ type: "text", text:

@@ -2981,9 +2981,14 @@ Structure: { "Room": { "Category": [ {id, text, quote, stage, source, img_ref, l
 TASK 5 — conflicts:
 Contradictions between input files. Each entry: "Conflict: [what contradicts what]. Source A: [file/quote]. Source B: [file/quote]. Question: [what needs clarification]"
 Example: "Conflict: living room wall color. Source A: brief — 'walls dark grey'. Source B: moodboard p.2 — reference with light walls. Question: which version is priority?"
+
+SOURCE OF TRUTH HIERARCHY (highest → lowest): annotated model with client notes > brief text > technical drawings > reference images.
+Only raise a conflict if the hierarchy does NOT resolve the contradiction — i.e. two sources at the SAME level disagree. If a higher-priority source clearly answers the question, do NOT raise a conflict.
+
 - DRAWING vs BRIEF: if a schematic elevation shows an element (built-in wardrobe, niche, shelf) but the DWG shows a structural element (door, column, beam) in the same wall position — flag as conflict.
 - ELEVATION vs TEXT: if an elevation drawing shows one finish or material but the brief text states another — flag as conflict.
 - PRECISE vs SCHEMATIC: if DWG dimensions and schematic elevation intent are incompatible (e.g. schematic shows wide unit but DWG wall is too narrow) — flag as conflict.
+- Do NOT flag as conflict when one source provides supplementary or additional info (not contradictory). Supplementary = adds detail. Contradictory = says the opposite.
 
 // TASK 6 (roadmap) — disabled, UI hidden. Re-enable when roadmap view is restored.
 
@@ -2996,10 +3001,12 @@ ${sowTemplatesText}
   - If the item has a default in the template → DO NOT ask the client. Format: "Item name — not specified. Will use: [default]. Confirm or send replacement"
   - If no default → format: "Item name — what the client needs to provide"
   - Never add to sow_missing if the value can be inferred from context (e.g. geolocation provided → no need to ask about regional electrical standards)
+  - AR FILTER: for non-AR project types (anything except "AR Rendering") — skip AR Specification items (File Size Limit for AR, Output Files for AR, Texture Resolution for AR, GLB, USDZ, polygon count, UV mapping) UNLESS the brief explicitly mentions AR, VR, GLB, USDZ, or web configurator.
 - sow_unclear: template items that are present but incomplete or unclear.
   - Format: "Item name — found: [what exists]. Ask client: '[question phrased directly to the client, as if writing to them]'"
   - One question per item — specific, not generic. Bad: "What materials?" Good: "Please specify RAL/HEX code for the living room accent wall"
   - Do NOT ask if the answer is obvious from context or can be resolved with the template default
+  - DEDUPLICATION: before finalizing sow_missing and sow_unclear — check for duplicate or near-duplicate questions and merge them into one. Two questions are duplicates if they ask for the same information even in different wording.
 
 TASK 7 — delivery_spec:
 For each SOW template item where you found a concrete value in the client materials, report:

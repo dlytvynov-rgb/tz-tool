@@ -2182,6 +2182,7 @@ const SOURCE_FILE_ICO = { pdf: "📄", dwg: "📐", dxf: "📐", excel: "📊", 
 function TzReviewStep({ projectType, rooms, tzByRoom, sowMissing, sowUnclear, deliverySpec, sowCoverage, buildingCoverage, clientComments, annotation, conflicts, roadmap, sources, files, sourceTags, onSourceTag, onEdit, onRemove, onBack, clientTranslation, buildingClientTranslation, onBuildClientTranslation, miqEval, onMiqRate, onMiqComment, miqFnItems, onMiqFnAdd, onMiqFnRemove }) {
   const allRooms = rooms?.length ? ["General", ...rooms.filter(r => r !== "General")] : ["General"];
   const [activeRoom, setActiveRoom] = useState(allRooms[0]);
+  const [defaultsExpanded, setDefaultsExpanded] = useState(false);
   const [activeStage, setActiveStage] = useState(PRODUCTION_STAGES[0]);
   const [sowPage, setSowPage] = useState("sowa"); // "sowa" | "niq"
   const [lightbox, setLightbox] = useState(null); // { imgRef, itemText }
@@ -2467,7 +2468,7 @@ function TzReviewStep({ projectType, rooms, tzByRoom, sowMissing, sowUnclear, de
 
       {/* ── SOWa / MIQ tabs ── */}
       <div style={{ background: "#fff", borderBottom: "1px solid #e8e6e1", display: "flex", padding: "0 20px", flexShrink: 0 }}>
-        {[["sowa", `SOWa · ${totalItems}`], ["spec", `SOWa + BT · ${deliverySpec?.length || 0}`], ["niq", `MIQ · ${(sowMissing?.length || 0) + (sowUnclear?.length || 0) + (conflicts?.length || 0)}`]].map(([id, label]) => (
+        {[["sowa", `SOWa · ${totalItems}`], ["spec", `SOWa + BT · ${deliverySpec?.length || 0}`], ["niq", `MIQ · ${(sowMissing?.filter(m => !m.includes("Will use:")).length || 0) + (sowUnclear?.length || 0) + (conflicts?.length || 0)}`]].map(([id, label]) => (
           <button key={id} onClick={() => setSowPage(id)} style={{ fontSize: 10, fontFamily: "monospace", fontWeight: 700, letterSpacing: "0.08em", padding: "10px 18px", border: "none", borderBottom: sowPage === id ? "2px solid #1a1a1a" : "2px solid transparent", background: "transparent", cursor: "pointer", color: sowPage === id ? "#1a1a1a" : "#aaa" }}>{label}</button>
         ))}
       </div>
@@ -2534,14 +2535,20 @@ function TzReviewStep({ projectType, rooms, tzByRoom, sowMissing, sowUnclear, de
               </div>
             );
           };
-          if (niqEmpty && !fn) return <div style={{ color: "#27ae60", fontFamily: "monospace", fontSize: 11, padding: "24px 0" }}>✓ No issues — brief is complete</div>;
+          const realMissing = (sowMissing || []).filter(m => !m.includes("Will use:"));
+          const appliedDefaults = (sowMissing || []).filter(m => m.includes("Will use:"));
+          const niqEmptyReal = !realMissing.length && !sowUnclear?.length && !conflicts?.length;
+          if (niqEmptyReal && !fn && !appliedDefaults.length) return <div style={{ color: "#27ae60", fontFamily: "monospace", fontSize: 11, padding: "24px 0" }}>✓ No issues — brief is complete</div>;
           return (
             <>
-              {sowMissing?.length > 0 && (
+              {realMissing.length > 0 && (
                 <div style={{ marginBottom: 24 }}>
-                  <div style={{ fontSize: 9, fontWeight: 700, fontFamily: "monospace", color: "#e74c3c", letterSpacing: "0.12em", marginBottom: 8 }}>MISSING ({sowMissing.length})</div>
+                  <div style={{ fontSize: 9, fontWeight: 700, fontFamily: "monospace", color: "#e74c3c", letterSpacing: "0.12em", marginBottom: 8 }}>MISSING ({realMissing.length})</div>
                   <div style={{ background: "#fff", borderRadius: 6, border: "1px solid #fde8e8", padding: "2px 14px" }}>
-                    {sowMissing.map((m, i) => renderRow(m, `missing_${i}`, "?", "#e74c3c", "#fde8e8", i === sowMissing.length - 1))}
+                    {realMissing.map((m, i) => {
+                      const origIdx = (sowMissing || []).indexOf(m);
+                      return renderRow(m, `missing_${origIdx}`, "?", "#e74c3c", "#fde8e8", i === realMissing.length - 1);
+                    })}
                   </div>
                 </div>
               )}
@@ -2562,6 +2569,34 @@ function TzReviewStep({ projectType, rooms, tzByRoom, sowMissing, sowUnclear, de
                       return renderRow(text, `conflict_${i}`, "⚡", "#e74c3c", "#fde8e8", i === conflicts.length - 1);
                     })}
                   </div>
+                </div>
+              )}
+
+              {/* Applied defaults — collapsible */}
+              {appliedDefaults.length > 0 && (
+                <div style={{ marginBottom: 24 }}>
+                  <div onClick={() => setDefaultsExpanded(e => !e)}
+                    style={{ fontSize: 9, fontWeight: 700, fontFamily: "monospace", color: "#888", letterSpacing: "0.12em", marginBottom: 8, cursor: "pointer", userSelect: "none", display: "flex", alignItems: "center", gap: 6 }}>
+                    <span>{defaultsExpanded ? "▾" : "▸"}</span>
+                    <span>APPLIED DEFAULTS ({appliedDefaults.length})</span>
+                  </div>
+                  {defaultsExpanded && (
+                    <div style={{ background: "#fafafa", borderRadius: 6, border: "1px solid #eee", padding: "4px 14px" }}>
+                      {appliedDefaults.map((m, i) => {
+                        const match = m.match(/^(.+?) — not specified\. Will use: (.+?)\. Confirm/);
+                        const label = match ? match[1] : m.split(" — ")[0];
+                        const value = match ? match[2] : m;
+                        const origIdx = (sowMissing || []).indexOf(m);
+                        return (
+                          <div key={i} style={{ padding: "7px 0", borderBottom: i < appliedDefaults.length - 1 ? "1px solid #f0f0f0" : "none", display: "flex", alignItems: "center", gap: 8 }}>
+                            <span style={{ fontSize: 10, color: "#aaa", fontFamily: "monospace", flexShrink: 0 }}>✓</span>
+                            <span style={{ fontSize: 11, flex: 1 }}><strong style={{ color: "#555" }}>{label}</strong><span style={{ color: "#aaa" }}> — {value}</span></span>
+                            {(() => { const e = (miqEval || {})[`missing_${origIdx}`] || {}; return <>{rateBtn(`missing_${origIdx}`, "TP", e.rating, "#27ae60", "#eafaf1")}{rateBtn(`missing_${origIdx}`, "FP", e.rating, "#e74c3c", "#fdf2f2")}</>; })()}
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
                 </div>
               )}
 

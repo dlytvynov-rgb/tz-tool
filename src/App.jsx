@@ -65,6 +65,38 @@ async function runOcr(canvas) {
   return text?.trim() || "";
 }
 
+// ─── DOCX embedded image OCR ──────────────────────────────────────────────────
+async function extractDocxImagesOcr(buf) {
+  try {
+    const JSZip = await loadJSZip();
+    const zip = await JSZip.loadAsync(buf.slice(0));
+    const imgPaths = Object.keys(zip.files).filter(n =>
+      n.startsWith("word/media/") && /\.(png|jpe?g)$/i.test(n)
+    );
+    if (!imgPaths.length) return "";
+    const parts = [];
+    for (const imgPath of imgPaths) {
+      try {
+        const data = await zip.files[imgPath].async("arraybuffer");
+        const blob = new Blob([data]);
+        const url = URL.createObjectURL(blob);
+        try {
+          const img = new Image();
+          await new Promise((res, rej) => { img.onload = res; img.onerror = rej; img.src = url; });
+          const canvas = document.createElement("canvas");
+          canvas.width = img.naturalWidth;
+          canvas.height = img.naturalHeight;
+          canvas.getContext("2d").drawImage(img, 0, 0);
+          const ocrText = await runOcr(canvas);
+          if (ocrText && ocrText.trim().length > 20)
+            parts.push(`[${imgPath.split("/").pop()}]\n${ocrText.trim()}`);
+        } finally { URL.revokeObjectURL(url); }
+      } catch { }
+    }
+    return parts.length ? "\n\n--- EMBEDDED IMAGES (OCR) ---\n" + parts.join("\n\n") : "";
+  } catch { return ""; }
+}
+
 async function pdfToPages(file, onProg, sig) {
   const lib = await loadPdfJs();
   const buf = await file.arrayBuffer();
@@ -219,6 +251,35 @@ async function imageToB64(file, onProg, sig) {
     };
     reader.readAsDataURL(file);
   });
+}
+
+// ─── TIFF decoding via utif ───────────────────────────────────────────────────
+async function tiffToB64(file, onProg) {
+  try {
+    onProg?.(20);
+    const UTIF = (await import("utif")).default;
+    const buf = await file.arrayBuffer();
+    const ifds = UTIF.decode(buf);
+    UTIF.decodeImage(buf, ifds[0]);
+    const { width: w, height: h, data } = ifds[0];
+    const canvas = document.createElement("canvas");
+    const maxDim = 1024;
+    const scale = Math.min(1, maxDim / Math.max(w, h));
+    const dw = Math.round(w * scale), dh = Math.round(h * scale);
+    canvas.width = dw; canvas.height = dh;
+    const ctx = canvas.getContext("2d");
+    const rgba = new Uint8ClampedArray(UTIF.toRGBA8(ifds[0]));
+    const srcCanvas = document.createElement("canvas");
+    srcCanvas.width = w; srcCanvas.height = h;
+    srcCanvas.getContext("2d").putImageData(new ImageData(rgba, w, h), 0, 0);
+    ctx.drawImage(srcCanvas, 0, 0, dw, dh);
+    onProg?.(80);
+    let qq = 0.72, b64 = canvas.toDataURL("image/jpeg", qq).split(",")[1];
+    while (b64 && b64.length * 0.75 > 2.5e6 && qq > 0.3) { qq -= 0.1; b64 = canvas.toDataURL("image/jpeg", qq).split(",")[1]; }
+    const preview = canvas.toDataURL("image/jpeg", 0.75);
+    onProg?.(100);
+    return { b64, preview, type: "image", filename: file.name, ext: "TIFF", pages: [{ b64, preview }] };
+  } catch { onProg?.(100); return { pages: [], type: "other", filename: file.name, ext: "TIFF", textContent: "[TIFF read error]" }; }
 }
 
 // ─── DWG parsing via @mlightcad/libredwg-web ──────────────────────────────────
@@ -504,14 +565,22 @@ async function processFile(file, onProg, sig) {
           s.onload = res; s.onerror = rej; document.head.appendChild(s);
         });
       }
-      onProg?.(50);
+      onProg?.(40);
       const buf = await file.arrayBuffer();
       const result = await window.mammoth.extractRawText({ arrayBuffer: buf });
-      onProg?.(100); return { pages: [], type: "text", filename: file.name, ext: "DOCX", textContent: result.value.slice(0, 12000) };
+      let textContent = result.value || "";
+      onProg?.(60);
+      if (nm.endsWith(".docx")) {
+        const imgOcr = await extractDocxImagesOcr(buf);
+        textContent += imgOcr;
+      }
+      onProg?.(100);
+      return { pages: [], type: "text", filename: file.name, ext: "DOCX", textContent: textContent.slice(0, 24000) };
     } catch { onProg?.(100); return { pages: [], type: "other", filename: file.name, ext: "DOCX", textContent: "[DOCX read error]" }; }
   }
   if (nm.endsWith(".fbx")) { onProg?.(10); const result = await parseFBX(file); onProg?.(100); return result; }
   if (nm.endsWith(".pdf")) return pdfToPages(file, onProg, sig);
+  if (nm.endsWith(".tiff") || nm.endsWith(".tif")) return tiffToB64(file, onProg);
   if (file.type.startsWith("image/")) return imageToB64(file, onProg, sig);
   onProg?.(100);
   return { pages: [], type: "other", filename: file.name, ext: file.name.split(".").pop().toUpperCase() };

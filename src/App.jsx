@@ -366,11 +366,17 @@ async function parseDWG(file) {
 
     const entities = db.entities || [];
     const texts = [], layers = new Set(), entityCounts = {};
+    const blockCounts = {};
+
+    const DOOR_RE = /door|дверь|двер|a-door|dor[^e]/i;
+    const WIN_RE  = /window|glaz|окно|a-glaz|a-win|win-/i;
 
     for (const e of entities) {
       entityCounts[e.type] = (entityCounts[e.type] || 0) + 1;
       if (e.layer) layers.add(e.layer);
-      if (e.type === "TEXT" && e.text?.trim()) {
+      if (e.type === "INSERT" && e.name) {
+        blockCounts[e.name] = (blockCounts[e.name] || 0) + 1;
+      } else if (e.type === "TEXT" && e.text?.trim()) {
         texts.push(e.text.trim());
       } else if (e.type === "MTEXT" && e.text) {
         const clean = e.text.replace(/\\[a-zA-Z0-9.;|]+;?/g, "").replace(/[{}]/g, "").trim();
@@ -380,12 +386,21 @@ async function parseDWG(file) {
       }
     }
 
+    const doors = Object.entries(blockCounts).filter(([n]) => DOOR_RE.test(n));
+    const windows = Object.entries(blockCounts).filter(([n]) => WIN_RE.test(n));
+    const otherBlocks = Object.entries(blockCounts)
+      .filter(([n]) => !DOOR_RE.test(n) && !WIN_RE.test(n))
+      .slice(0, 30);
+
     const uniqueTexts = [...new Set(texts)].slice(0, 120);
     const layerList = [...layers].filter(l => l && l !== "0").slice(0, 40);
 
     let textContent = `=== DWG: ${file.name} ===\n`;
     if (layerList.length) textContent += `LAYERS: ${layerList.join(", ")}\n`;
     if (Object.keys(entityCounts).length) textContent += `ENTITIES: ${Object.entries(entityCounts).map(([k, v]) => `${k}×${v}`).join(", ")}\n`;
+    if (doors.length) textContent += `DOORS: ${doors.map(([n, c]) => `${n}×${c}`).join(", ")}\n`;
+    if (windows.length) textContent += `WINDOWS: ${windows.map(([n, c]) => `${n}×${c}`).join(", ")}\n`;
+    if (otherBlocks.length) textContent += `BLOCKS: ${otherBlocks.map(([n, c]) => `${n}×${c}`).join(", ")}\n`;
     if (uniqueTexts.length) textContent += `LABELS:\n${uniqueTexts.map(t => "  • " + t).join("\n")}\n`;
 
     const preview = renderDwgToCanvas(entities);
@@ -3055,7 +3070,49 @@ IMPORTANT: for each page, "extracted text" is provided — use it as the primary
 TASK 1 — project_type:
 ${selectedTypes.length > 0
   ? `Type(s) already selected by PM: ${selectedTypes.join(", ")}. Use exactly these types — do not change. If multiple selected, return the first as project_type.`
-  : `Determine one option: ${sowTypes}`}
+  : `Determine one option: ${sowTypes}
+
+Use the SCORING MATRIX. Find each field below in the brief → add score to that type → pick highest total.
+
+SCORE 3 — definitive (one field alone identifies the type):
+• "Grout depth" / "Seam: Grouted seam/Seamless" / "Tile size, length" / "Floor pattern: Herringbone/Chevron/Standard" → Floor Rendering
+• "Bedding: Pillows/Blanket/Coverlet" / "Silo image: With a bed" / "Layer image" / "Mattress Components" / "Mattress Build" → Mattress Rendering
+• "Additional visualisation services: Top view (dimensions)" / "Close Up Lifestyle" (as rug-specific service) → Rugs Rendering
+• "Ambient Occlusion (AO) map usage" / "3D Model UV Mapping: Atlas UV/Real-world Scale UV" / "Polygon Count Limit: Low-poly/Mid-poly/High-poly" / "Number of Texture Sets" → AR Rendering
+• "Weld seams to be included: Yes/No" / "Modeling of Internal Parts: Closed/Open" / "How should the product be designed: single seamless piece / different components" → 3D Modeling
+• "Scene Type: Creative environment/Exterior/Outdoor" / "Reference usage: Strict Adherence to Client-Provided References / Client References with Studio Adaptation" → Lifestyle
+• "Camera angles and height: Aerial/Semi aerial view/Master plan view" / "Project location, coordinates, address" / "Should additional elements be added: Birds/Balloons/Airplanes" → Aerial
+• "Income level of the target audience: Cost-effective/Mid-range/Premium or high-end" / "Essential Functions for the Design: Relaxation/Work/Entertainment" / "Room Detailing Preference: Fully decorated/Minimal" → Design Interior
+• "Market segment: Economy/Mid-range/Premium/Luxury/Ultra-luxury" / "Property type: Apartment/Condo/Community/Private House" / "Spaces to visualize: Indoor amenity/Outdoor amenity" / "Layout/Plan availability: Hand-drawn sketch" → Real Estate
+• "Type of plan: 3D Floorplan (Perspective)/3D Floorplan (Axonometric)" / "Orientation/Scale: North direction marked/Scale 1:100" / "Style preference: Color-coded zones (public/private)/Architectural line drawing" → Floorplan
+• "Background Fill for Silo: Transparent/White/HEX" + "Choose Shadow Position" + no scene/room context → Silo
+
+SCORE 2 — strong signal:
+• "Type of buildings: Residential" + room list (living room/bedroom) + DWG/CAD drawings → Residential Interior
+• "Type of buildings: Commercial" + room list (cafe/office/retail/hotel) + DWG/CAD drawings → Commercial Interior
+• "Style: Contemporary/Farmhouse/Industrial/Modern/Scandinavian/Traditional/Transitional/Luxury" + NO DWG → Design Interior
+• "Neighboring buildings: Greenery without buildings/Similar-looking/Reconstruct from Google Maps" + facade drawings → Exterior
+• "Output Files: GLB/USDZ" → AR Rendering
+• "Output File Format: OBJ/FBX/MAX/3DS" + no still renders requested → 3D Modeling
+• "Studio provides references for client approval" + no DWG → Design Interior
+• "Number of points per room: 1/2/3 points" / "Image Specifications Resolution: 6000×3000px" → Real Estate
+
+SCORE 1 — weak signal (contributes to total):
+• "Type of project: Concept" → Design Interior, Exterior, Aerial
+• "Type of renderings: Virtual tours" → Residential/Commercial Interior, Real Estate
+• "Additional services: 3D Plan/3D sectional" → Residential/Commercial Interior, Floorplan
+• "Product type: Floor/Wall panel" → Floor Rendering
+• "Scene type: Residential/Commercial" (in floor context) → Floor Rendering
+• "Type of Workflow: Custom lifestyle/Template from Archivizer library" → Lifestyle, Mattress, Floor Rendering
+
+TIEBREAKERS:
+• DWG/CAD provided → Interior over Design Interior
+• No DWG + "Style" field → Design Interior over Interior
+• "Type of buildings: Commercial" → Commercial variant
+• "Type of buildings: Residential" → Residential variant
+• "Scene Type" field present → Lifestyle over Interior
+• "Background Fill: Transparent/White" explicit → Silo over Lifestyle
+• "Project location, coordinates, address" → Aerial over Exterior`}
 
 TASK 2 — project_annotation:
 Brief description (3-5 sentences): space type, area/number of rooms, style, key materials, what was provided.

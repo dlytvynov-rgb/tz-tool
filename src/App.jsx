@@ -18,11 +18,22 @@ async function loadXLSX() {
 async function excelToText(file) {
   const XLSX = await loadXLSX();
   const buf = await file.arrayBuffer();
-  const wb = XLSX.read(new Uint8Array(buf), { type: "array" });
+  const wb = XLSX.read(new Uint8Array(buf), { type: "array", cellHyperlinks: true });
   const lines = [];
   wb.SheetNames.forEach(name => {
-    const csv = XLSX.utils.sheet_to_csv(wb.Sheets[name], { skipHidden: true });
-    if (csv.replace(/,/g, "").trim()) { lines.push(`=== ${name} ===`); lines.push(csv.slice(0, 6000)); }
+    const ws = wb.Sheets[name];
+    const csv = XLSX.utils.sheet_to_csv(ws, { skipHidden: true });
+    const csvClean = csv.split("\n").filter(l => l.replace(/,/g, "").trim()).join("\n");
+    if (!csvClean) return;
+    lines.push(`=== ${name} ===`);
+    lines.push(csvClean.slice(0, 10000));
+    // Extract hyperlinks from cells
+    const links = [];
+    Object.entries(ws).forEach(([addr, cell]) => {
+      if (addr.startsWith("!") || !cell?.l?.Target) return;
+      links.push(`  ${addr} "${cell.v || ""}" → ${cell.l.Target}`);
+    });
+    if (links.length) lines.push(`HYPERLINKS:\n${links.join("\n")}`);
   });
   return lines.join("\n");
 }
@@ -467,7 +478,7 @@ async function processFile(file, onProg, sig) {
   }
   if (nm.endsWith(".xlsx") || nm.endsWith(".xls") || nm.endsWith(".csv")) {
     onProg?.(30);
-    try { const text = nm.endsWith(".csv") ? await file.text() : await excelToText(file); onProg?.(100); return { pages: [], type: "excel", filename: file.name, ext: nm.endsWith(".csv") ? "CSV" : "XLSX", textContent: text.slice(0, 12000) }; }
+    try { const text = nm.endsWith(".csv") ? await file.text() : await excelToText(file); onProg?.(100); return { pages: [], type: "excel", filename: file.name, ext: nm.endsWith(".csv") ? "CSV" : "XLSX", textContent: text.slice(0, 24000) }; }
     catch { onProg?.(100); return { pages: [], type: "excel", filename: file.name, ext: "XLSX", textContent: "[read error]" }; }
   }
   if (nm.endsWith(".rtf")) {

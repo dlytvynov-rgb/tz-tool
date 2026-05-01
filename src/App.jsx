@@ -2267,7 +2267,6 @@ const SOURCE_FILE_ICO = { pdf: "📄", dwg: "📐", dxf: "📐", excel: "📊", 
 function TzReviewStep({ projectType, rooms, tzByRoom, sowMissing, sowUnclear, deliverySpec, sowCoverage, buildingCoverage, clientComments, annotation, conflicts, roadmap, sources, files, sourceTags, onSourceTag, onEdit, onRemove, onBack, clientTranslation, buildingClientTranslation, onBuildClientTranslation, miqEval, onMiqRate, onMiqComment, miqFnItems, onMiqFnAdd, onMiqFnRemove }) {
   const allRooms = rooms?.length ? ["General", ...rooms.filter(r => r !== "General")] : ["General"];
   const [activeRoom, setActiveRoom] = useState(allRooms[0]);
-  const [defaultsExpanded, setDefaultsExpanded] = useState(false);
   const [activeStage, setActiveStage] = useState(PRODUCTION_STAGES[0]);
   const [sowPage, setSowPage] = useState("sowa"); // "sowa" | "niq"
   const [lightbox, setLightbox] = useState(null); // { imgRef, itemText }
@@ -2657,31 +2656,27 @@ function TzReviewStep({ projectType, rooms, tzByRoom, sowMissing, sowUnclear, de
                 </div>
               )}
 
-              {/* Applied defaults — collapsible */}
+              {/* Applied defaults — always visible */}
               {appliedDefaults.length > 0 && (
                 <div style={{ marginBottom: 24 }}>
-                  <div onClick={() => setDefaultsExpanded(e => !e)}
-                    style={{ fontSize: 9, fontWeight: 700, fontFamily: "monospace", color: "#888", letterSpacing: "0.12em", marginBottom: 8, cursor: "pointer", userSelect: "none", display: "flex", alignItems: "center", gap: 6 }}>
-                    <span>{defaultsExpanded ? "▾" : "▸"}</span>
-                    <span>APPLIED DEFAULTS ({appliedDefaults.length})</span>
+                  <div style={{ fontSize: 9, fontWeight: 700, fontFamily: "monospace", color: "#888", letterSpacing: "0.12em", marginBottom: 8 }}>
+                    APPLIED DEFAULTS ({appliedDefaults.length})
                   </div>
-                  {defaultsExpanded && (
-                    <div style={{ background: "#fafafa", borderRadius: 6, border: "1px solid #eee", padding: "4px 14px" }}>
-                      {appliedDefaults.map((m, i) => {
-                        const match = m.match(/^(.+?) — not specified\. Will use: (.+?)\. Confirm/);
-                        const label = match ? match[1] : m.split(" — ")[0];
-                        const value = match ? match[2] : m;
-                        const origIdx = (sowMissing || []).indexOf(m);
-                        return (
-                          <div key={i} style={{ padding: "7px 0", borderBottom: i < appliedDefaults.length - 1 ? "1px solid #f0f0f0" : "none", display: "flex", alignItems: "center", gap: 8 }}>
-                            <span style={{ fontSize: 10, color: "#aaa", fontFamily: "monospace", flexShrink: 0 }}>✓</span>
-                            <span style={{ fontSize: 11, flex: 1 }}><strong style={{ color: "#555" }}>{label}</strong><span style={{ color: "#aaa" }}> — {value}</span></span>
-                            {(() => { const e = (miqEval || {})[`missing_${origIdx}`] || {}; return <>{rateBtn(`missing_${origIdx}`, "TP", e.rating, "#27ae60", "#eafaf1")}{rateBtn(`missing_${origIdx}`, "FP", e.rating, "#e74c3c", "#fdf2f2")}</>; })()}
-                          </div>
-                        );
-                      })}
-                    </div>
-                  )}
+                  <div style={{ background: "#fafafa", borderRadius: 6, border: "1px solid #eee", padding: "4px 14px" }}>
+                    {appliedDefaults.map((m, i) => {
+                      const match = m.match(/^(.+?) — not specified\. Will use: (.+?)\. Confirm/);
+                      const label = match ? match[1] : m.split(" — ")[0];
+                      const value = match ? match[2] : m;
+                      const origIdx = (sowMissing || []).indexOf(m);
+                      return (
+                        <div key={i} style={{ padding: "7px 0", borderBottom: i < appliedDefaults.length - 1 ? "1px solid #f0f0f0" : "none", display: "flex", alignItems: "center", gap: 8 }}>
+                          <span style={{ fontSize: 10, color: "#aaa", fontFamily: "monospace", flexShrink: 0 }}>✓</span>
+                          <span style={{ fontSize: 11, flex: 1 }}><strong style={{ color: "#555" }}>{label}</strong><span style={{ color: "#aaa" }}> — {value}</span></span>
+                          {(() => { const e = (miqEval || {})[`missing_${origIdx}`] || {}; return <>{rateBtn(`missing_${origIdx}`, "TP", e.rating, "#27ae60", "#eafaf1")}{rateBtn(`missing_${origIdx}`, "FP", e.rating, "#e74c3c", "#fdf2f2")}</>; })()}
+                        </div>
+                      );
+                    })}
+                  </div>
                 </div>
               )}
 

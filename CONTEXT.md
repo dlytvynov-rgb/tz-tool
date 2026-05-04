@@ -1,7 +1,7 @@
 # Doc Nexus — Project Context
 
 > Для нового розробника або AI. Оновлюється після кожної сесії.
-> Останнє оновлення: 30.04.2026 (вечір)
+> Останнє оновлення: 01.05.2026
 
 ---
 
@@ -110,11 +110,11 @@ API ключ вводиться в UI і зберігається в localStorag
 **Проблема:** packed contact-sheet PDF мав 18 сторінок > PDF_DIRECT_LIMIT (15) → йшов в Haiku → timeout.  
 **Рішення:** прапор `_skipPreExtract: true` на packed PDF в `parseTz()`, перевірка в `preProcessLargeFiles()`.
 
-### MIQ — Applied Defaults в колапсованій секції
-MISSING раніше показував і реальні питання і задефолтовані пункти разом — ПМ не міг відрізнити "треба питати клієнта" від "вже вирішено". Тепер:
-- MISSING = тільки реальні питання без дефолту
-- "Applied defaults" = окремий колапсований блок під CONFLICTS
-- Лічильник вкладки MIQ не рахує дефолти
+### MIQ — Silent defaults + питання з дефолтом
+`SILENT_DEFAULT_KEYS` — константа з полями які ніколи не показуються в MISSING (People, Naming, Delivery, Render elements, Clothing, File size, Crop, Cars, Additional services). Тихо застосовуються, видно тільки в SOWa+BT.
+
+Meaningful defaults (Resolution, DPI, File Format, Aspect ratio, Camera angles, Background Fill, Season, Time, Geolocation, Model) — показуються в MISSING як питання:
+`"Field — not specified. Will use: [value] — confirm or provide alternative"`
 
 ### Prompt: AR filter
 Для не-AR проектів Claude пропускає AR Specification пункти (GLB, USDZ, polygon count, UV mapping) якщо бриф явно не згадує AR/VR/web configurator. Усуває зайві питання типу "вкажіть polygon count" для residential interior.
@@ -181,7 +181,7 @@ Real Estate, Design Interior, 3D Modeling, Floorplan, AR Rendering
 |---------|-----------|
 | **SOWa** | `tz_by_room` — картки по категоріях BT шаблону |
 | **SOWa + BT** | `delivery_spec` — таблиця brief/default/unclear |
-| **MIQ** | `sow_missing` (тільки реальні питання) / Applied Defaults (collapsed) / `sow_unclear` / `conflicts` + TP/FP оцінки + F1 Score |
+| **MIQ** | `sow_missing` (тільки реальні питання) / Applied Defaults (завжди відкриті) / `sow_unclear` / `conflicts` + TP/FP оцінки + F1 Score |
 
 Приховані вкладки (код збережений, UI прихований): Кімнати, Стадії, Таблиця, PM-звіт → `src/HIDDEN_CODE.md`
 

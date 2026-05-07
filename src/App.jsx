@@ -2565,7 +2565,7 @@ function TzReviewStep({ projectType, rooms, tzByRoom, sowMissing, sowUnclear, de
 
       {/* ── SOWa / MIQ tabs ── */}
       <div style={{ background: "#fff", borderBottom: "1px solid #e8e6e1", display: "flex", padding: "0 20px", flexShrink: 0 }}>
-        {[["sowa", `SOWa · ${totalItems}`], ["spec", `SOWa + BT · ${deliverySpec?.length || 0}`], ["niq", `MIQ · ${(sowMissing?.length || 0) + (sowUnclear?.length || 0) + (conflicts?.length || 0)}`]].map(([id, label]) => (
+        {[["sowa", `SOWa · ${totalItems}`], ["spec", `SOWa + BT · ${deliverySpec?.length || 0}`], ["niq", `MIQ · ${(sowMissing || []).filter(m => !m.includes("Will use:")).length + (deliverySpec || []).filter(d => d.source === "default").length + (sowUnclear?.length || 0) + (conflicts?.length || 0)}`]].map(([id, label]) => (
           <button key={id} onClick={() => setSowPage(id)} style={{ fontSize: 10, fontFamily: "monospace", fontWeight: 700, letterSpacing: "0.08em", padding: "10px 18px", border: "none", borderBottom: sowPage === id ? "2px solid #1a1a1a" : "2px solid transparent", background: "transparent", cursor: "pointer", color: sowPage === id ? "#1a1a1a" : "#aaa" }}>{label}</button>
         ))}
       </div>
@@ -2632,12 +2632,10 @@ function TzReviewStep({ projectType, rooms, tzByRoom, sowMissing, sowUnclear, de
             );
           };
           const realMissing = (sowMissing || []).filter(m => !m.includes("Will use:"));
-          const appliedDefaults = (sowMissing || []).filter(m => m.includes("Will use:"));
-          const visibleDefaults = appliedDefaults.filter(m => {
-            const key = m.match(/^(.+?) —/)?.[1]?.trim();
-            return !key || !SILENT_DEFAULT_KEYS.has(key);
-          });
-          const allMissing = [...realMissing, ...visibleDefaults];
+          const specDefaults = (deliverySpec || [])
+            .filter(d => d.source === "default" && d.value)
+            .map(d => `${d.key} — not specified. Will use: ${d.value}. Confirm or send replacement`);
+          const allMissing = [...realMissing, ...specDefaults];
           const niqEmpty = !allMissing.length && !sowUnclear?.length && !conflicts?.length;
           if (niqEmpty && !fn) return <div style={{ color: "#27ae60", fontFamily: "monospace", fontSize: 11, padding: "24px 0" }}>✓ No issues — brief is complete</div>;
           return (
